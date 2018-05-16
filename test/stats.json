@@ -1,0 +1,15 @@
+{
+  "proto_ver": 0,
+  "data": {
+    "type": "Stats",
+    "timestamp": 1524760392.159075,
+    "cliid": "6e845eabffe0e294257da1159f5202216c2e6d352822ebebf23f99731bbd17337830b8a31ed73aa207e19ba3180dc89bc6ecdb5255a2182b64fed5206d1959fa",
+    "sessid": "2e82d720-ba4e-4ea7-8645-d32b446c11a8",
+    "known_tasks": 0,
+    "supported_tasks": 0,
+    "computed_tasks": 57,
+    "tasks_with_errors": 0,
+    "tasks_with_timeout": 1,
+    "tasks_requested": 22518
+  }
+}

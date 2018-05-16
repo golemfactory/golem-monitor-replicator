@@ -1,0 +1,24 @@
+{
+  "data": {
+    "cliid": "3601923d6ff99410c82a7290163c441b03963bf066f56877958b9c519b8f8fff5880416bfdf5a90254475faea22d75f9f50b6f427b2a19ed6b4589ea8cff2205",
+    "timestamp": 1469121172.743,
+    "sessid": "807164517e3647dcb97bd6bcc05632fa",
+    "type": "Login",
+    "metadata": {
+      "os": "win32",
+      "settings": "{\"obj\": {\"waiting_for_task_timeout\": 720, \"end_port\": 60102, \"send_pings\": 1, \"getting_tasks_interval\": 4.0, \"getting_peers_interval\": 4.0, \"seed_host\": \"\", \"use_waiting_for_task_timeout\": 0, \"computing_trust\": -1.0, \"seed_port\": 40102, \"forwarded_session_request_timeout\": 30, \"requesting_trust\": -1.0, \"accept_tasks\": 1, \"task_session_timeout\": 900, \"resource_session_timeout\": 600, \"plugin_port\": 1111, \"task_request_interval\": 5.0, \"min_price\": 500000000000000, \"manager_port\": 20301, \"network_check_interval\": 1.0, \"dist_res_num\": 2, \"estimated_lux_performance\": \"3328.9\", \"start_port\": 40102, \"public_address\": \"\", \"max_price\": 5000000000000000, \"node_snapshot_interval\": 10.0, \"waiting_for_task_session_timeout\": 20, \"max_memory_size\": 11534336, \"estimated_performance\": 2220.0, \"eth_account\": \"\", \"max_results_sending_delay\": 360, \"p2p_session_timeout\": 240, \"use_distributed_resource_management\": 1, \"node_address\": \"\", \"add_tasks\": 0, \"max_resource_size\": 2097152, \"opt_peer_num\": 10, \"num_cores\": 1, \"node_name\": \"Blablar 1\", \"use_ipv6\": 0, \"pings_interval\": 120, \"estimated_blender_performance\": \"1599.7\", \"manager_address\": \"127.0.0.1\"}, \"type\": \"ClientConfigDescriptor\"}",
+      "timestamp": 1469121170.079,
+      "cliid": "3601923d6ff99410c82a7290163c441b03963bf066f56877958b9c519b8f8fff5880416bfdf5a90254475faea22d75f9f50b6f427b2a19ed6b4589ea8cff2205",
+      "sessid": "807164517e3647dcb97bd6bcc05632fa",
+      "version": "0.2",
+      "type": "NodeMetadata",
+      "description": ""
+    },
+    "protocol_versions": {
+      "monitor": 1,
+      "p2p": "26",
+      "task": "26"
+    }
+  },
+  "proto_ver": 0
+}

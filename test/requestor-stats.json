@@ -1,0 +1,24 @@
+{
+  "proto_ver": 0,
+  "data": {
+    "type": "RequestorStats",
+    "timestamp": 1524760292.163782,
+    "cliid": "6e845eabffe0e294257da1159f5202216c2e6d352822ebebf23f99731bbd17337830b8a31ed73aa207e19ba3180dc89bc6ecdb5255a2182b64fed5206d1959fa",
+    "sessid": "2e82d720-ba4e-4ea7-8645-d32b446c11a8",
+    "tasks_cnt": 0,
+    "finished_task_cnt": 0,
+    "requested_subtasks_cnt": 0,
+    "collected_results_cnt": 0,
+    "verified_results_cnt": 0,
+    "timed_out_subtasks_cnt": 0,
+    "not_downloadable_subtasks_cnt": 0,
+    "failed_subtasks_cnt": 0,
+    "work_offers_cnt": 0,
+    "finished_ok_cnt": 0,
+    "finished_ok_total_time": 0.0,
+    "finished_with_failures_cnt": 0,
+    "finished_with_failures_total_time": 0.0,
+    "failed_cnt": 0,
+    "failed_total_time": 0.0
+  }
+}
