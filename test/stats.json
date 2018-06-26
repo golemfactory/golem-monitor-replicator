@@ -8,7 +8,7 @@
     "known_tasks": 0,
     "supported_tasks": 0,
     "computed_tasks": 57,
-    "tasks_with_errors": 0,
+    "tasks_with_errors": false,
     "tasks_with_timeout": 1,
     "tasks_requested": 22518
   }
