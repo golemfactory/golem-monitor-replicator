@@ -310,8 +310,8 @@ fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashM
         .collect()
 }
 
-fn to_node_info(env: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
-    let StatsRequest { cliid, timestamp, sessid: _, body } = env.data;
+fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
+    let StatsRequest { cliid, timestamp, sessid: _, body } = envelope.data;
 
     match body {
         StatsRequestBody::Login { metadata, protocol_versions, .. } =>
@@ -482,15 +482,10 @@ impl Handler<()> for UpdateHandler {
 
         req.json() // here json is converted to Envelope<StatsRequests>
             .from_err()
-            .and_then(|b:Envelope<StatsRequest>|
-                Ok(to_node_info(b))
-            )
-            .and_then(move |r| {
-                if let Some(node_info) = r {
-                    update_kv(&updater, &node_info)
-                } else {
-                    Box::new(future::ok(HttpResponse::Ok().into()))
-                }
+            .and_then(|envelope| Ok(to_node_info(envelope)))
+            .and_then(move |opt| match opt {
+                    Some(node_info) => update_kv(&updater, &node_info),
+                    None => Box::new(future::ok(HttpResponse::Ok().into()))
             }).or_else(|e : actix_web::Error| {
                 let mut resp = e.cause().error_response();
                 warn!("processing request, error={:?}", &e);
@@ -546,7 +541,7 @@ mod tests {
     fn parse_stats_output() {
         let input = include_str!("../test/stats.json");
         let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
-        println!("pretty json {:?}", map);
+        println!("output map {:?}", map);
         assert_eq!(map.get("tasks_requested").unwrap(), "22518");
     }
 
@@ -554,7 +549,7 @@ mod tests {
     fn parse_requestor_stats_output() {
         let input = include_str!("../test/requestor-stats.json");
         let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
-        println!("pretty json {:?}", map);
+        println!("output map {:?}", map);
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
 }

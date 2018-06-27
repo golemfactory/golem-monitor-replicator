@@ -58,23 +58,26 @@ impl From<MailboxError> for Error {
     }
 }
 
+fn to_hmset_command(msg: UpdateKey) -> Command {
+    let mut msg_vec = Vec::with_capacity(2 + msg.value.len() * 2);
+    msg_vec.push(RespValue::SimpleString("HMSET".into()));
+    msg_vec.push(RespValue::SimpleString(msg.key));
+
+    for (key, value) in msg.value {
+        msg_vec.push(RespValue::SimpleString(key));
+        msg_vec.push(RespValue::SimpleString(value));
+    }
+
+    Command(RespValue::Array(msg_vec))
+}
 
 impl Handler<UpdateKey> for Updater {
     type Result = ActorResponse<Updater, (), Error>;
 
     fn handle(&mut self, msg: UpdateKey, _: &mut Self::Context) -> <Self as Handler<UpdateKey>>::Result {
         let redis_actor = &self.redis_actor;
-        let mut msg_vec: Vec<RespValue> = Vec::with_capacity(2 + msg.value.len() * 2);
-        msg_vec.push(RespValue::SimpleString("HMSET".into()));
-        msg_vec.push(RespValue::SimpleString(msg.key));
 
-        for (key, value) in msg.value {
-            msg_vec.push(RespValue::SimpleString(key));
-            msg_vec.push(RespValue::SimpleString(value));
-        }
-
-
-        let f = redis_actor.send(Command(RespValue::Array(msg_vec)))
+        let f = redis_actor.send(to_hmset_command(msg))
                 .into_actor(self)
                 .map_err(|e, _, _|{
                     error!("update key error {:?}", &e);
