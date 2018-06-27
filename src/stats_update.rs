@@ -458,11 +458,11 @@ fn to_hash_map<T : serde::Serialize>(input : T) -> Result<HashMap<String, String
     }
 }
 
-fn update_kv(updater : &Addr<Unsync, Updater>, nodeInfo : &NodeInfoOutput)
+fn update_kv(updater : &Addr<Unsync, Updater>, node_info : &NodeInfoOutput)
         -> Box<Future<Item = HttpResponse, Error=actix_web::Error>> {
-    let key = format!("nodeinfo.{}", nodeInfo.cliid);
+    let key = format!("nodeinfo.{}", node_info.cliid);
 
-    if let Ok(map) = to_hash_map(nodeInfo) {
+    if let Ok(map) = to_hash_map(node_info) {
         Box::new(updater.send(UpdateKey { key, value: map })
             .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
             .and_then(|r| match r {
@@ -470,7 +470,7 @@ fn update_kv(updater : &Addr<Unsync, Updater>, nodeInfo : &NodeInfoOutput)
                 Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!("save: {}", e)))
             }))
     } else {
-        Box::new(future::err(actix_web::error::ErrorInternalServerError("gen nodeInfo")))
+        Box::new(future::err(actix_web::error::ErrorInternalServerError("gen node_info")))
     }
 }
 
@@ -486,8 +486,8 @@ impl Handler<()> for UpdateHandler {
                 Ok(to_node_info(b))
             )
             .and_then(move |r| {
-                if let Some(nodeInfo) = r {
-                    update_kv(&updater, &nodeInfo)
+                if let Some(node_info) = r {
+                    update_kv(&updater, &node_info)
                 } else {
                     Box::new(future::ok(HttpResponse::Ok().into()))
                 }
@@ -547,5 +547,14 @@ mod tests {
         let input = include_str!("../test/stats.json");
         let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
         println!("pretty json {:?}", map);
+        assert_eq!(map.get("tasks_requested").unwrap(), "22518");
+    }
+
+    #[test]
+    fn parse_requestor_stats_output() {
+        let input = include_str!("../test/requestor-stats.json");
+        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
+        println!("pretty json {:?}", map);
+        assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
 }

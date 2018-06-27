@@ -15,7 +15,7 @@
     "failed_subtasks_cnt": 0,
     "work_offers_cnt": 0,
     "finished_ok_cnt": 0,
-    "finished_ok_total_time": 0.0,
+    "finished_ok_total_time": 3.14,
     "finished_with_failures_cnt": 0,
     "finished_with_failures_total_time": 0.0,
     "failed_cnt": 0,
