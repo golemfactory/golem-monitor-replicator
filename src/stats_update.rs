@@ -26,7 +26,6 @@ struct ObjectEnvelope<T> {
 struct StatsRequest {
     cliid : String,
     timestamp : f64,
-    sessid : String,
 
     #[serde(flatten)]
     body : StatsRequestBody
@@ -40,6 +39,7 @@ enum StatsRequestBody {
 
         #[serde(default)]
         protocol_versions: HashMap<String, Value>,
+        sessid : Option<String>,
 
         #[serde(flatten)]
         extra: HashMap<String, Value>,
@@ -207,6 +207,8 @@ fn string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 #[derive(Serialize, Debug)]
 struct NodeInfoOutput {
     cliid : String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sessid : Option<String>,
     timestamp : f64,
     #[serde(flatten)]
     metadata : MedataOutput,
@@ -306,17 +308,25 @@ struct RequestorStatsOutput {
 
 fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashMap<String, Value> {
     protocol_versions.iter().map(|ent |
-        (format!("protocol_versions_{}", ent.0), ent.1.clone()))
+        (format!("protocol_version_{}", ent.0), ent.1.clone()))
         .collect()
 }
 
 fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
-    let StatsRequest { cliid, timestamp, sessid: _, body } = envelope.data;
+    let StatsRequest { cliid, timestamp, body } = envelope.data;
+
+    debug!("req type: {}, {:?}", match body {
+        StatsRequestBody::Login {..} => {"Login"},
+        StatsRequestBody::Stats {..} => {"Stats"},
+        StatsRequestBody::RequestorStats {..} => {"RequestorStats"},
+        _ => {"Other"}
+    }, body);
 
     match body {
-        StatsRequestBody::Login { metadata, protocol_versions, .. } =>
+        StatsRequestBody::Login { metadata, protocol_versions, sessid, .. } =>
             Some(NodeInfoOutput {
                 cliid,
+                sessid,
                 timestamp,
                 extra: protocol_versions_to_map(&protocol_versions),
                 stats: StatsOutput::default(),
@@ -354,6 +364,7 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
             failed_total_time
         } => Some(NodeInfoOutput {
             cliid,
+            sessid: Option::None,
             timestamp,
             metadata: MedataOutput::default(),
             extra: HashMap::new(),
@@ -386,6 +397,7 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
             ..
         } => Some(NodeInfoOutput {
             cliid,
+            sessid: Option::None,
             timestamp,
             metadata: MedataOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
@@ -402,7 +414,7 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
         }),
 
         v => {
-            warn!("unsuported info: {:?}", v);
+            warn!("unsupported info: {:?}", v);
             None
         }
     }

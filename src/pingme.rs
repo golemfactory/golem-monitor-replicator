@@ -57,34 +57,28 @@ fn extract_address(r : &HttpRequest) -> Option<IpAddr> {
 struct PortStatus {
     port :u16,
     is_open : bool,
-    description : &'static str
+    description : String
 }
 
 fn ping_address(addr : &IpAddr, port : u16) -> Box<Future<Item=PortStatus, Error=actix_web::Error>> {
-    let p = port;
-    let pp = port;
-    let p3 = port;
     let addr = SocketAddr::new(*addr, port);
 
     let timeout =
         reactor::Timeout::new(DEFAULT_TIMEOUT, Arbiter::handle()).unwrap()
-            .and_then(move |_| future::ok(PortStatus { port: p3, is_open: false, description: "timeout"}));
+            .and_then(move |_| Ok(PortStatus { port, is_open: false, description: "timeout".into() }))
+            .or_else(move |e| Ok(PortStatus { port, is_open: false, description: format!("timeout err {}", e) }));
 
-    Box::new(
-        timeout.select(
+    let ping =
         TcpStream::connect(&addr, Arbiter::handle())
-            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("io: {}", e)))
-            .and_then(move |_| {
-                 Ok(PortStatus { port: p, is_open: true, description: "open" })
-            })
-            .or_else(move |_e| {
-                Ok(PortStatus { port: pp, is_open: false, description: "unreachable"})
-            }))
-            .map_err(|e|
-                actix_web::error::ErrorInternalServerError(format!("io: {}", e.0)))
-            .and_then(|(result, _other)|
-                future::ok(result))
-            )
+            .and_then(move |_tcp| Ok(PortStatus { port, is_open: true, description: "open".into() }))
+            .or_else(move |e| Ok(PortStatus { port, is_open: false, description: format!("connection err {}", e) }));
+
+    Box::new(timeout.select(ping)
+        .map_err(|(err, _next)
+            | err)
+        .and_then(|(result, _next)
+            | future::ok(result))
+    )
 }
 
 fn ping_multi(addr : &IpAddr, ports : &Vec<u16>) -> Box<Future<Item=Vec<PortStatus>, Error=actix_web::Error>> {

@@ -13,6 +13,7 @@ impl Updater {
     }
 }
 
+#[derive(Debug)]
 pub struct UpdateKey {
     pub key: String,
     pub value: HashMap<String, String>,
@@ -59,13 +60,15 @@ impl From<MailboxError> for Error {
 }
 
 fn to_hmset_command(msg: UpdateKey) -> Command {
-    let mut msg_vec = Vec::with_capacity(2 + msg.value.len() * 2);
-    msg_vec.push(RespValue::SimpleString("HMSET".into()));
-    msg_vec.push(RespValue::SimpleString(msg.key));
+    debug!("preparing command for {:?}", msg);
+
+    let mut msg_vec : Vec<RespValue> = Vec::with_capacity(2 + msg.value.len() * 2);
+    msg_vec.push("HMSET".into());
+    msg_vec.push(msg.key.into());
 
     for (key, value) in msg.value {
-        msg_vec.push(RespValue::SimpleString(key));
-        msg_vec.push(RespValue::SimpleString(value));
+        msg_vec.push(key.into());
+        msg_vec.push(value.into());
     }
 
     Command(RespValue::Array(msg_vec))
@@ -83,7 +86,7 @@ impl Handler<UpdateKey> for Updater {
                     error!("update key error {:?}", &e);
                     e.into()
                 })
-                .map(|_,_,_| ());
+                .map(|r,_,_| debug!("resp={:?}", r));
 
         ActorResponse::async(f )
     }
