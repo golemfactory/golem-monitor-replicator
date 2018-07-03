@@ -41,8 +41,7 @@ struct PingMeResult {
     time_diff : f64
 }
 
-#[inline]
-fn extract_address(r : &HttpRequest) -> Option<IpAddr> {
+pub fn get_client_ip(r : &HttpRequest) -> Option<IpAddr> {
     use std::str::FromStr;
 
     let forwarded_for : Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
@@ -108,7 +107,7 @@ fn time_diff(base : SystemTime, other : SystemTime) -> f64 {
 
 pub fn ping_me(r : HttpRequest) -> Box<Future<Item = HttpResponse, Error=actix_web::Error>> {
     let system_time = SystemTime::now();
-    let peer_address = extract_address(&r);
+    let client_ip = get_client_ip(&r);
 
     r.json()
         .map_err(|e| {
@@ -127,9 +126,7 @@ pub fn ping_me(r : HttpRequest) -> Box<Future<Item = HttpResponse, Error=actix_w
         .and_then(move |(b, ports) : (PingMe, Vec<u16>)| {
             let timestamp = UNIX_EPOCH + Duration::from_millis((b.timestamp*1000.0f64) as u64);
 
-
-
-            let l : Box<Future<Item = Vec<PortStatus>, Error = actix_web::Error>>  = match peer_address {
+            let l : Box<Future<Item = Vec<PortStatus>, Error = actix_web::Error>>  = match client_ip {
                 Some(ref addr) => ping_multi(&addr, &ports),
                 _ =>   Box::new(future::err(actix_web::error::ErrorInternalServerError("source address not valid")))
             };

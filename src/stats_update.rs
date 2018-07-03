@@ -1,13 +1,22 @@
-use std::collections::HashMap;
-use serde_json::{Value, self};
+use actix::prelude::*;
+use actix_redis::RedisActor;
+use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::dev::Handler;
+use futures::future;
+use futures::future::Future;
+use pingme::get_client_ip;
 use serde::{Deserialize, Deserializer};
-use std::str::FromStr;
-use std::marker::PhantomData;
-use serde::de::Visitor;
-use serde::de::MapAccess;
-use serde::de;
 use serde;
+use serde::de;
+use serde::de::MapAccess;
+use serde::de::Visitor;
+use serde_json::{self, Value};
+use std::collections::HashMap;
 use std::fmt;
+use std::marker::PhantomData;
+use std::net::IpAddr;
+use std::str::FromStr;
+use updater::{UpdateKey, Updater};
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -23,17 +32,17 @@ struct ObjectEnvelope<T> {
 }
 
 #[derive(Deserialize, Debug)]
-struct StatsRequest {
+struct GolemRequest {
     cliid : String,
     timestamp : f64,
 
     #[serde(flatten)]
-    body : StatsRequestBody
+    body : GolemRequestBody
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
-enum StatsRequestBody {
+enum GolemRequestBody {
     Login {
         metadata : Option<Metadata>,
 
@@ -209,23 +218,21 @@ struct NodeInfoOutput {
     cliid : String,
     #[serde(skip_serializing_if = "Option::is_none")]
     sessid : Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip : Option<IpAddr>,
     timestamp : f64,
     #[serde(flatten)]
-    metadata : MedataOutput,
-
+    metadata : MetadataOutput,
     #[serde(flatten)]
     stats : StatsOutput,
-
-
     #[serde(flatten)]
     requestor_stats : RequestorStatsOutput,
-
     #[serde(flatten)]
     extra : HashMap<String, Value>,
 }
 
 #[derive(Serialize, Debug, Default)]
-struct MedataOutput {
+struct MetadataOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     net : Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -312,26 +319,22 @@ fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashM
         .collect()
 }
 
-fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
-    let StatsRequest { cliid, timestamp, body } = envelope.data;
+fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
+    let GolemRequest { cliid, timestamp, body } = envelope.data;
 
-    debug!("req type: {}, {:?}", match body {
-        StatsRequestBody::Login {..} => {"Login"},
-        StatsRequestBody::Stats {..} => {"Stats"},
-        StatsRequestBody::RequestorStats {..} => {"RequestorStats"},
-        _ => {"Other"}
-    }, body);
+    debug!("req type: {:?}", body);
 
     match body {
-        StatsRequestBody::Login { metadata, protocol_versions, sessid, .. } =>
+        GolemRequestBody::Login { metadata, protocol_versions, sessid, .. } =>
             Some(NodeInfoOutput {
                 cliid,
                 sessid,
+                ip,
                 timestamp,
                 extra: protocol_versions_to_map(&protocol_versions),
                 stats: StatsOutput::default(),
                 requestor_stats: RequestorStatsOutput::default(),
-                metadata: metadata.map(|m| MedataOutput {
+                metadata: metadata.map(|m| MetadataOutput {
                     net: m.net,
                     os: m.os,
                     version: m.version,
@@ -346,10 +349,10 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
                     max_resource_size: m.settings.max_resource_size,
                     node_name: m.settings.node_name,
                     num_cores: m.settings.num_cores,
-                }).unwrap_or(MedataOutput::default()),
+                }).unwrap_or(MetadataOutput::default()),
             }),
 
-        StatsRequestBody::RequestorStats {
+        GolemRequestBody::RequestorStats {
             tasks_cnt, finished_task_cnt, requested_subtasks_cnt,
             collected_results_cnt, verified_results_cnt,
             timed_out_subtasks_cnt,
@@ -365,8 +368,9 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
         } => Some(NodeInfoOutput {
             cliid,
             sessid: Option::None,
+            ip,
             timestamp,
-            metadata: MedataOutput::default(),
+            metadata: MetadataOutput::default(),
             extra: HashMap::new(),
             stats: StatsOutput::default(),
             requestor_stats: RequestorStatsOutput {
@@ -387,7 +391,7 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
                 rs_work_offers_cnt: Some(work_offers_cnt),
             },
         }),
-        StatsRequestBody::Stats {
+        GolemRequestBody::Stats {
             known_tasks,
             supported_tasks,
             computed_tasks,
@@ -398,8 +402,9 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
         } => Some(NodeInfoOutput {
             cliid,
             sessid: Option::None,
+            ip,
             timestamp,
-            metadata: MedataOutput::default(),
+            metadata: MetadataOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
             extra: HashMap::default(),
             stats: StatsOutput {
@@ -419,14 +424,6 @@ fn to_node_info(envelope: Envelope<StatsRequest>) -> Option<NodeInfoOutput> {
         }
     }
 }
-
-use actix_web::dev::Handler;
-use actix_web::{HttpResponse, HttpRequest, AsyncResponder, HttpMessage, self};
-use actix_redis::{RedisActor};
-use actix::prelude::*;
-use futures::future::Future;
-use futures::{future};
-use updater::{Updater, UpdateKey};
 
 pub struct UpdateHandler {
     updater : Addr<Unsync, Updater>
@@ -473,6 +470,7 @@ fn to_hash_map<T : serde::Serialize>(input : T) -> Result<HashMap<String, String
 fn update_kv(updater : &Addr<Unsync, Updater>, node_info : &NodeInfoOutput)
         -> Box<Future<Item = HttpResponse, Error=actix_web::Error>> {
     let key = format!("nodeinfo.{}", node_info.cliid);
+    debug!("nodeinfo {:?}", node_info);
 
     if let Ok(map) = to_hash_map(node_info) {
         Box::new(updater.send(UpdateKey { key, value: map })
@@ -491,10 +489,17 @@ impl Handler<()> for UpdateHandler {
 
     fn handle(&mut self, req: HttpRequest<()>) -> <Self as Handler<()>>::Result {
         let updater = self.updater.clone();
+        let client_ip = get_client_ip(&req);
+
+        if let Some(ip) = client_ip {
+            debug!("client IP {:?}", ip)
+        } else {
+            info!("no client IP")
+        }
 
         req.json() // here json is converted to Envelope<StatsRequests>
             .from_err()
-            .and_then(|envelope| Ok(to_node_info(envelope)))
+            .and_then(move |envelope| Ok(to_node_info(envelope, client_ip)))
             .and_then(move |opt| match opt {
                     Some(node_info) => update_kv(&updater, &node_info),
                     None => Box::new(future::ok(HttpResponse::Ok().into()))
@@ -510,34 +515,33 @@ impl Handler<()> for UpdateHandler {
 
 #[cfg(test)]
 mod tests {
-
-    use super::*;
     use serde_json;
+    use super::*;
 
     #[test]
     fn parse_login() {
         let input = include_str!("../test/login.json");
 
 
-        let r: Envelope<StatsRequest> = serde_json::from_str(input).unwrap();
+        let r: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
 
         {
-            println!("envl {:?}", &r);
+            println!("envelop {:?}", &r);
             let settings: &Settings = match &r.data.body {
-                &StatsRequestBody::Login { ref metadata, .. } => &metadata.as_ref().unwrap().settings,
+                &GolemRequestBody::Login { ref metadata, .. } => &metadata.as_ref().unwrap().settings,
                 _ => panic!("login expected")
             };
             assert_eq!(&settings.extra["use_ipv6"], &json!(0));
         }
 
-        let output = to_node_info(r);
+        let output = to_node_info(r, None);
         println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
     }
 
     #[test]
     fn parse_stats() {
         let input = include_str!("../test/stats.json");
-        let output = to_node_info(serde_json::from_str(input).unwrap());
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None);
         println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
     }
 
@@ -545,14 +549,14 @@ mod tests {
     #[test]
     fn parse_requestor_stats() {
         let input = include_str!("../test/requestor-stats.json");
-        let output = to_node_info(serde_json::from_str(input).unwrap());
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None);
         println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
     }
 
     #[test]
     fn parse_stats_output() {
         let input = include_str!("../test/stats.json");
-        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
+        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
         println!("output map {:?}", map);
         assert_eq!(map.get("tasks_requested").unwrap(), "22518");
     }
@@ -560,7 +564,7 @@ mod tests {
     #[test]
     fn parse_requestor_stats_output() {
         let input = include_str!("../test/requestor-stats.json");
-        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap())).unwrap();
+        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
         println!("output map {:?}", map);
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
