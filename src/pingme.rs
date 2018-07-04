@@ -56,7 +56,7 @@ pub fn get_client_ip(r : &HttpRequest) -> Option<IpAddr> {
 struct PortStatus {
     port :u16,
     is_open : bool,
-    description : String
+    description : &'static str
 }
 
 fn ping_address(addr : &IpAddr, port : u16) -> Box<Future<Item=PortStatus, Error=actix_web::Error>> {
@@ -64,17 +64,16 @@ fn ping_address(addr : &IpAddr, port : u16) -> Box<Future<Item=PortStatus, Error
 
     let timeout =
         reactor::Timeout::new(DEFAULT_TIMEOUT, Arbiter::handle()).unwrap()
-            .and_then(move |_| Ok(PortStatus { port, is_open: false, description: "timeout".into() }))
-            .or_else(move |e| Ok(PortStatus { port, is_open: false, description: format!("timeout err {}", e) }));
+            .and_then(move |_| Ok(PortStatus { port, is_open: false, description: "timeout" }));
 
     let ping =
         TcpStream::connect(&addr, Arbiter::handle())
-            .and_then(move |_tcp| Ok(PortStatus { port, is_open: true, description: "open".into() }))
-            .or_else(move |e| Ok(PortStatus { port, is_open: false, description: format!("connection err {}", e) }));
+            .and_then(move |_tcp| Ok(PortStatus { port, is_open: true, description: "open" }))
+            .or_else(move |_err| Ok(PortStatus { port, is_open: false, description: "unreachable" }));
 
     Box::new(timeout.select(ping)
         .map_err(|(err, _next)
-            | err)
+            | actix_web::error::ErrorInternalServerError(format!("io: {}", err)))
         .and_then(|(result, _next)
             | future::ok(result))
     )
