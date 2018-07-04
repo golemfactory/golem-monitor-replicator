@@ -3,17 +3,22 @@
 use futures::prelude::*;
 use futures::future;
 use actix::{Arbiter};
-use actix_web::{self, http, HttpRequest, AsyncResponder, HttpMessage, HttpResponse};
+use actix_web::{self, http, HttpRequest, AsyncResponder, HttpMessage, HttpResponse, Body};
 use actix_web::error::{JsonPayloadError, ResponseError};
 use std::net::{IpAddr, SocketAddr};
 use tokio_core::net::TcpStream;
 use tokio_core::reactor;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+use url::form_urlencoded::parse;
+use bytes::Bytes;
+use nom::AsBytes;
+use super::get_client_ip;
 
 const DEFAULT_TIMEOUT : Duration = Duration::from_secs(5);
 const MAX_PORTS : usize = 5;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 struct  PingMe {
     timestamp : f64,
@@ -39,17 +44,6 @@ struct PingMeResult {
     description : String,
     port_statuses : Vec<PortStatus>,
     time_diff : f64
-}
-
-pub fn get_client_ip(r : &HttpRequest) -> Option<IpAddr> {
-    use std::str::FromStr;
-
-    let forwarded_for : Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
-
-    match forwarded_for {
-        Some(ref v) => v.to_str().ok().and_then(|a| IpAddr::from_str(a).ok()),
-        _ => r.peer_addr().map(|a| a.ip())
-    }
 }
 
 #[derive(Serialize,Debug)]
@@ -108,7 +102,8 @@ pub fn ping_me(r : HttpRequest) -> Box<Future<Item = HttpResponse, Error=actix_w
     let system_time = SystemTime::now();
     let client_ip = get_client_ip(&r);
 
-    r.json()
+    r.body()
+        .and_then(|b| Ok(parse_url_params(b.as_bytes())))
         .map_err(|e| {
             actix_web::error::ErrorBadRequest(format!("{}", e))
         })
@@ -158,6 +153,23 @@ pub fn ping_me(r : HttpRequest) -> Box<Future<Item = HttpResponse, Error=actix_w
        .responder()
 }
 
+fn parse_url_params(input: &[u8]) -> PingMe {
+    let mut ping_me = PingMe {timestamp: 0f64, port: None, ports: Vec::new()};
+    for (k,v) in parse(input) {
+        match k.as_ref() {
+            "timestamp" => if let Ok(t) = v.parse() {
+                ping_me.timestamp = t;
+            },
+            "ports" => if let Ok(p) = v.parse() {
+                ping_me.ports.push(p);
+            },
+            "port" => ping_me.port = v.parse().ok(),
+            _ => println!("unknown param {}={}", k, v)
+        }
+    }
+
+    ping_me
+}
 
 #[cfg(test)]
 mod tests {
@@ -171,6 +183,36 @@ mod tests {
         let p : PingMe = serde_json::from_str("{\"port\": 2020, \"timestamp\": 12.0}").unwrap();
         assert_eq!(p.port.unwrap(), 2020);
         assert!(p.timestamp > 11.0);
+    }
+
+    #[test]
+    fn test_empty() {
+        let ping_me = parse_url_params("".as_bytes());
+        assert_eq!(ping_me, PingMe {ports: vec![], port: None, timestamp: 0f64 });
+    }
+
+    #[test]
+    fn test_timestamp() {
+        let ping_me = parse_url_params("timestamp=3.14".as_bytes());
+        assert_eq!(ping_me, PingMe {ports: vec![], port: None, timestamp: 3.14 });
+    }
+
+    #[test]
+    fn test_parse_single_port() {
+        let ping_me = parse_url_params("port=37&timestamp=7".as_bytes());
+        assert_eq!(ping_me, PingMe {ports: vec![], port: Some(37), timestamp: 7f64 });
+    }
+
+    #[test]
+    fn test_parse_multiple_ports() {
+        let ping_me = parse_url_params("ports=40102&ports=40103&ports=3282&timestamp=1530717930.2452438".as_bytes());
+        assert_eq!(ping_me, PingMe {ports: vec![40102, 40103, 3282], port: None, timestamp: 1530717930.2452438 });
+    }
+
+    #[test]
+    fn test_parse_unknown() {
+        let ping_me = parse_url_params("portsa=40102&portsb=40103&ports=3282&timestamp=1530717930.2452438".as_bytes());
+        assert_eq!(ping_me, PingMe {ports: vec![3282], port: None, timestamp: 1530717930.2452438 });
     }
 
 }

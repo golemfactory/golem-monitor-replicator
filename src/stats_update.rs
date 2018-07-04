@@ -4,7 +4,7 @@ use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
 use actix_web::dev::Handler;
 use futures::future;
 use futures::future::Future;
-use pingme::get_client_ip;
+use super::get_client_ip;
 use serde::{Deserialize, Deserializer};
 use serde;
 use serde::de;
@@ -569,3 +569,23 @@ mod tests {
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
 }
+
+// Integration test - run it from terminal ;)
+// curl \
+//     --header "Content-Type: application/json" \
+//     --request POST \
+//     --data '{"proto_ver": 2,
+//              "data": {
+//                   "known_tasks": 0,
+//                   "supported_tasks": 2721,
+//                   "computed_tasks": 0,
+//                   "tasks_with_errors": 0,
+//                   "tasks_with_timeout": 0,
+//                   "tasks_requested": 314,
+//                   "sessid": "5bbeefa5-423e-425c-92dd-bde94e2c9777",
+//                   "cliid": "9b70f9e784cb487791e4374879cdde9166a132f8d38fd807de9f2efea04cdd33f05a007495f2d409f205584a4c29737459e01f0a4aba749d9a92912ee0facccd",
+//                   "timestamp": 1,
+//                   "type": "Stats"
+//             }
+//         }' \
+//     http://localhost:8081
