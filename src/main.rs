@@ -94,10 +94,9 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
         let update_handler_update = stats_update::UpdateHandler::new(redis_actor);
 
         app.resource("/", move |r| {
-            r.method(http::Method::POST).h(update_handler_root)
-        }).resource("/", move |r| {
             r.method(http::Method::GET).h(|_r|
-                HttpResponse::MovedPermanenty().header("Location", "/show").finish())
+                HttpResponse::MovedPermanenty().header("Location", "/show").finish());
+            r.method(http::Method::POST).h(update_handler_root)
         }).resource("/update", |r| {
             r.method(http::Method::POST).h(update_handler_update)
         })
