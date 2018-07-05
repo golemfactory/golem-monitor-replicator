@@ -156,17 +156,16 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
                     description.push_str(&l);
                 }
 
+                let ping_me_result = PingMeResult {
+                    success,
+                    description,
+                    port_statuses,
+                    time_diff: time_diff(system_time, timestamp),
+                };
 
-                Ok(
-                    HttpResponse::Ok()
-                        .json(PingMeResult {
-                            success,
-                            description,
-                            port_statuses,
-                            time_diff: time_diff(system_time, timestamp),
-                        })
-                        .into(),
-                )
+                debug!("ping-me response {:?}", ping_me_result);
+
+                Ok(HttpResponse::Ok().json(ping_me_result).into())
             })
         })
         .or_else(|e: actix_web::Error| {
