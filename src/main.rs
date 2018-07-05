@@ -5,7 +5,7 @@ extern crate serde;
 
 extern crate url;
 
-#[macro_use]
+#[cfg_attr(test, macro_use)]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
@@ -23,11 +23,9 @@ use actix_web::{http, server, App, HttpRequest, HttpMessage, HttpResponse};
 use config::{ConfigError, Config, File, Environment};
 use std::net::IpAddr;
 
-#[cfg(feature = "stats_update")]
-#[macro_use]
+#[cfg_attr(feature = "stats_update", macro_use)]
 extern crate redis_async;
-#[cfg(feature = "stats_update")]
-#[macro_use]
+#[cfg_attr(feature = "stats_update", macro_use)]
 extern crate failure;
 #[cfg(feature = "stats_update")]
 mod stats_update;
