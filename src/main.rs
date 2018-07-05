@@ -5,6 +5,7 @@ extern crate serde;
 
 extern crate url;
 
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
@@ -18,7 +19,7 @@ extern crate log;
 
 extern crate config;
 
-use actix_web::{http, server, App, HttpRequest, HttpMessage};
+use actix_web::{http, server, App, HttpRequest, HttpMessage, HttpResponse};
 use config::{ConfigError, Config, File, Environment};
 use std::net::IpAddr;
 
@@ -96,9 +97,12 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
 
         app.resource("/", move |r| {
             r.method(http::Method::POST).h(update_handler_root)
+        }).resource("/", move |r| {
+            r.method(http::Method::GET).h(|_r|
+                HttpResponse::MovedPermanenty().header("Location", "/show").finish())
         }).resource("/update", |r| {
-                r.method(http::Method::POST).h(update_handler_update)
-            })
+            r.method(http::Method::POST).h(update_handler_update)
+        })
     }
 }
 
