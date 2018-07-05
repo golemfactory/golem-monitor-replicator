@@ -17,6 +17,8 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use super::get_client_ip;
 use updater::{UpdateKey, Updater};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -34,7 +36,7 @@ struct ObjectEnvelope<T> {
 #[derive(Deserialize, Debug)]
 struct GolemRequest {
     cliid: String,
-    timestamp: f64,
+    timestamp: f64, // ignored, system time will be used
 
     #[serde(flatten)]
     body: GolemRequestBody,
@@ -219,7 +221,7 @@ struct NodeInfoOutput {
     sessid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ip: Option<IpAddr>,
-    timestamp: f64,
+    timestamp: u64,
     #[serde(flatten)]
     metadata: MetadataOutput,
     #[serde(flatten)]
@@ -319,12 +321,22 @@ fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashM
         .collect()
 }
 
+fn now_in_millis() -> u64 {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let secs = now.as_secs() as u64;
+    let millis = (now.subsec_nanos() / 1000000) as u64;
+
+    secs * 1000 + millis
+}
+
 fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
     let GolemRequest {
         cliid,
-        timestamp,
         body,
+        ..
     } = envelope.data;
+
+    let timestamp = now_in_millis();
 
     debug!("req type: {:?}", body);
 
