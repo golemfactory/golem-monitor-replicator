@@ -26,3 +26,7 @@ nom="3.2"
 default = ["stats_update"]
 pingme = []
 stats_update = []
+
+[profile.release]
+lto = true
+overflow-checks = true

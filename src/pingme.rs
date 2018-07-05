@@ -163,7 +163,7 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
                     time_diff: time_diff(system_time, timestamp),
                 };
 
-                debug!("ping-me for IP: {} response {:?}", client_ip, ping_me_result);
+                debug!("ping-me for IP: {:?} response {:?}", client_ip, ping_me_result);
 
                 Ok(HttpResponse::Ok().json(ping_me_result).into())
             })
