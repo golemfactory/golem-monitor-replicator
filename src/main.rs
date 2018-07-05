@@ -3,16 +3,13 @@ extern crate actix_web;
 extern crate actix_redis;
 extern crate serde;
 
-#[allow(unused_imports)]
-#[macro_use]
+extern crate url;
+
+#[cfg_attr(test, macro_use)]
 extern crate serde_json;
-#[macro_use] extern crate serde_derive;
-extern crate futures;
 #[macro_use]
-extern crate redis_async;
-
-
-#[macro_use] extern crate failure;
+extern crate serde_derive;
+extern crate futures;
 
 extern crate tokio_core;
 
@@ -22,17 +19,42 @@ extern crate log;
 
 extern crate config;
 
-use actix_web::{http, server, App};
+use actix_web::{http, server, App, HttpRequest, HttpMessage, HttpResponse};
 use config::{ConfigError, Config, File, Environment};
+use std::net::IpAddr;
 
-mod pingme;
+#[cfg_attr(feature = "stats_update", macro_use)]
+extern crate redis_async;
+#[cfg_attr(feature = "stats_update", macro_use)]
+extern crate failure;
+#[cfg(feature = "stats_update")]
 mod stats_update;
+#[cfg(feature = "stats_update")]
 mod updater;
+
+
+#[cfg(feature = "pingme")]
+extern crate bytes;
+#[cfg(feature = "pingme")]
+extern crate nom;
+#[cfg(feature = "pingme")]
+mod pingme;
+
+pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
+    use std::str::FromStr;
+
+    let forwarded_for: Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
+
+    match forwarded_for {
+        Some(ref v) => v.to_str().ok().and_then(|a| IpAddr::from_str(a).ok()),
+        _ => r.peer_addr().map(|a| a.ip()),
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct MonitorSettings {
-    address : ::std::net::SocketAddr,
-    redis_address : String
+    address: ::std::net::SocketAddr,
+    redis_address: String,
 }
 
 impl MonitorSettings {
@@ -49,42 +71,70 @@ impl MonitorSettings {
     }
 }
 
+#[cfg(feature = "pingme")]
+fn route_pingme(app: App) -> App {
+    info!("mounting ping-me");
+    app.route("/ping-me", http::Method::POST, pingme::ping_me)
+}
+
+#[cfg(not(feature = "pingme"))]
+fn route_pingme(app: App) -> App {
+    app
+}
+
+#[cfg(feature = "stats_update")]
+fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
+    info!("mounting stats update");
+    use actix_redis::RedisActor;
+
+    move |app: App| -> App {
+        let redis_actor = RedisActor::start(redis_address.clone());
+
+        let update_handler_root = stats_update::UpdateHandler::new(redis_actor.clone());
+        let update_handler_update = stats_update::UpdateHandler::new(redis_actor);
+
+        app.resource("/", move |r| {
+            r.method(http::Method::GET).h(|_r|
+                HttpResponse::MovedPermanenty().header("Location", "/show").finish());
+            r.method(http::Method::POST).h(update_handler_root)
+        }).resource("/update", |r| {
+            r.method(http::Method::POST).h(update_handler_update)
+        })
+    }
+}
+
+#[cfg(not(feature = "stats_update"))]
+fn route_stats_update(_: String) -> impl Fn(App) -> App {
+    |app| app
+}
+
 fn main() {
 
     if ::std::env::var("RUST_LOG").is_err() {
-        ::std::env::set_var("RUST_LOG", "actix_web=info,actix_redis=info,golem_monitor_rust=info")
+        ::std::env::set_var(
+            "RUST_LOG",
+            "actix_web=info,actix_redis=info,golem_monitor_rust=info",
+        )
     }
     env_logger::init();
 
     let sys = actix::System::new("golem-monitor");
 
-    let MonitorSettings { address, redis_address } = MonitorSettings::load().unwrap();
+    let MonitorSettings {
+        address,
+        redis_address,
+    } = MonitorSettings::load().unwrap();
 
     info!("Starting server on {}", &address);
 
-    server::new(
-         move || {
-            use actix_redis::RedisActor;
-
-            let redis_actor = RedisActor::start(redis_address.clone());
-
-            let update_handler_root = stats_update::UpdateHandler::new(redis_actor.clone());
-            let update_handler_update = stats_update::UpdateHandler::new(redis_actor);
-
-            App::new()
-                .middleware(actix_web::middleware::Logger::default())
-                .route("/ping-me", http::Method::POST, pingme::ping_me)
-                .resource("/", |r| {
-                    r.method(http::Method::POST).h(update_handler_root)
-                })
-                .resource("/update", |r| {
-                    r.method(http::Method::POST).h(update_handler_update)
-                })
-
-        })
-        .bind(address).unwrap()
+    server::new(move || {
+        App::new()
+            .middleware(actix_web::middleware::Logger::default())
+            .configure(route_pingme)
+            .configure(route_stats_update(redis_address.clone()))
+    }).bind(address)
+        .unwrap()
         .start();
 
     let _ = sys.run();
 }
-
