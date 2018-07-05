@@ -74,6 +74,7 @@ impl MonitorSettings {
 
 #[cfg(feature = "pingme")]
 fn route_pingme(app: App) -> App {
+    info!("mounting ping-me");
     app.route("/ping-me", http::Method::POST, pingme::ping_me)
 }
 
@@ -84,6 +85,7 @@ fn route_pingme(app: App) -> App {
 
 #[cfg(feature = "stats_update")]
 fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
+    info!("mounting stats update");
     use actix_redis::RedisActor;
 
     move |app: App| -> App {
