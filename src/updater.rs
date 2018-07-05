@@ -1,6 +1,6 @@
-use futures::prelude::*;
 use actix::prelude::*;
-use actix_redis::{RedisActor, RespValue, Command};
+use actix_redis::{Command, RedisActor, RespValue};
+use futures::prelude::*;
 use std::collections::HashMap;
 
 pub struct Updater {
@@ -34,8 +34,7 @@ impl Actor for Updater {
                 format!(
                     "monitor-thread-{:?}",
                     ::std::thread::current().id()
-                ),
-            ]))
+                )]))
             .map(|_r| ())
             .map_err(|e| warn!("CLIENT SETNAME error {:?}", e))
             .into_actor(self)

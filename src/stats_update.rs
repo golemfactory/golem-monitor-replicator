@@ -4,7 +4,6 @@ use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
 use actix_web::dev::Handler;
 use futures::future;
 use futures::future::Future;
-use super::get_client_ip;
 use serde::{Deserialize, Deserializer};
 use serde;
 use serde::de;
@@ -16,6 +15,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::net::IpAddr;
 use std::str::FromStr;
+use super::get_client_ip;
 use updater::{UpdateKey, Updater};
 
 #[derive(Deserialize, Debug)]
@@ -526,7 +526,7 @@ impl Handler<()> for UpdateHandler {
                     Some(node_info) => update_kv(&updater, &node_info),
                     None => Box::new(future::ok(HttpResponse::Ok().into()))
             }).or_else(|e : actix_web::Error| {
-                let mut resp = e.cause().error_response();
+                let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
                 resp.set_body(format!("{}",e));
                 future::ok(resp)

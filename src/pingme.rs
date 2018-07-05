@@ -1,19 +1,14 @@
-#![allow(unused_imports)]
-
-use futures::prelude::*;
-use futures::future;
 use actix::Arbiter;
-use actix_web::{self, http, HttpRequest, AsyncResponder, HttpMessage, HttpResponse, Body};
-use actix_web::error::{JsonPayloadError, ResponseError};
+use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
+use futures::future;
+use futures::prelude::*;
+use nom::AsBytes;
 use std::net::{IpAddr, SocketAddr};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use super::get_client_ip;
 use tokio_core::net::TcpStream;
 use tokio_core::reactor;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::collections::HashMap;
 use url::form_urlencoded::parse;
-use bytes::Bytes;
-use nom::AsBytes;
-use super::get_client_ip;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PORTS: usize = 5;
@@ -177,7 +172,7 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
         .or_else(|e: actix_web::Error| {
             debug!("Error {:?}", &e);
 
-            let mut resp = e.cause().error_response();
+            let mut resp = e.as_response_error().error_response();
             resp.set_body(format!("{}", e));
             Ok(resp)
         })
@@ -212,9 +207,8 @@ fn parse_url_params(input: &[u8]) -> PingMe {
 
 #[cfg(test)]
 mod tests {
-
-    use super::*;
     use serde_json;
+    use super::*;
 
 
     #[test]

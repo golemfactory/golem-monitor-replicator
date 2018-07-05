@@ -5,17 +5,10 @@ extern crate serde;
 
 extern crate url;
 
-#[allow(unused_imports)]
-#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 extern crate futures;
-#[macro_use]
-extern crate redis_async;
-
-#[macro_use]
-extern crate failure;
 
 extern crate tokio_core;
 
@@ -30,17 +23,23 @@ use config::{ConfigError, Config, File, Environment};
 use std::net::IpAddr;
 
 #[cfg(feature = "stats_update")]
+#[macro_use]
+extern crate redis_async;
+#[cfg(feature = "stats_update")]
+#[macro_use]
+extern crate failure;
+#[cfg(feature = "stats_update")]
 mod stats_update;
 #[cfg(feature = "stats_update")]
 mod updater;
 
 
 #[cfg(feature = "pingme")]
-mod pingme;
-#[cfg(feature = "pingme")]
 extern crate bytes;
 #[cfg(feature = "pingme")]
 extern crate nom;
+#[cfg(feature = "pingme")]
+mod pingme;
 
 pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
     use std::str::FromStr;
@@ -102,8 +101,8 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
 }
 
 #[cfg(not(feature = "stats_update"))]
-fn route_stats_update(app: App) -> App {
-    app
+fn route_stats_update(_: String) -> impl Fn(App) -> App {
+    |app| app
 }
 
 fn main() {
