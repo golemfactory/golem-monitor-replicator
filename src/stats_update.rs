@@ -21,40 +21,40 @@ use updater::{UpdateKey, Updater};
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
     proto_ver: u64,
-    data : T
+    data: T,
 }
 
 #[derive(Deserialize, Debug)]
 struct ObjectEnvelope<T> {
     #[serde(rename = "type")]
     ctype: String,
-    obj : T
+    obj: T,
 }
 
 #[derive(Deserialize, Debug)]
 struct GolemRequest {
-    cliid : String,
-    timestamp : f64,
+    cliid: String,
+    timestamp: f64,
 
     #[serde(flatten)]
-    body : GolemRequestBody
+    body: GolemRequestBody,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
 enum GolemRequestBody {
     Login {
-        metadata : Option<Metadata>,
+        metadata: Option<Metadata>,
 
         #[serde(default)]
         protocol_versions: HashMap<String, Value>,
-        sessid : Option<String>,
+        sessid: Option<String>,
 
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
     Logout {
-        metadata : Option<Metadata>,
+        metadata: Option<Metadata>,
 
         #[serde(default)]
         protocol_versions: HashMap<String, Value>,
@@ -64,17 +64,17 @@ enum GolemRequestBody {
     },
     Stats {
         #[serde(default)]
-        known_tasks : u64,
+        known_tasks: u64,
         #[serde(default)]
-        supported_tasks : u64,
+        supported_tasks: u64,
         #[serde(default)]
-        computed_tasks : u64,
+        computed_tasks: u64,
         #[serde(default)]
-        tasks_with_errors : u64,
+        tasks_with_errors: u64,
         #[serde(default)]
-        tasks_with_timeout : u64,
+        tasks_with_timeout: u64,
         #[serde(default)]
-        tasks_requested : u64,
+        tasks_requested: u64,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
@@ -88,35 +88,35 @@ enum GolemRequestBody {
     },
     RequestorStats {
         #[serde(default)]
-        tasks_cnt : u64,
+        tasks_cnt: u64,
         #[serde(default)]
-        finished_task_cnt : u64,
+        finished_task_cnt: u64,
         #[serde(default)]
-        requested_subtasks_cnt : u64,
+        requested_subtasks_cnt: u64,
         #[serde(default)]
-        collected_results_cnt : u64,
+        collected_results_cnt: u64,
         #[serde(default)]
-        verified_results_cnt : u64,
+        verified_results_cnt: u64,
         #[serde(default)]
-        timed_out_subtasks_cnt : u64,
+        timed_out_subtasks_cnt: u64,
         #[serde(default)]
-        not_downloadable_subtasks_cnt : u64,
+        not_downloadable_subtasks_cnt: u64,
         #[serde(default)]
-        failed_subtasks_cnt : u64,
+        failed_subtasks_cnt: u64,
         #[serde(default)]
-        work_offers_cnt : u64,
+        work_offers_cnt: u64,
         #[serde(default)]
-        finished_ok_cnt : u64,
+        finished_ok_cnt: u64,
         #[serde(default)]
-        finished_ok_total_time : f64,
+        finished_ok_total_time: f64,
         #[serde(default)]
-        finished_with_failures_cnt :u64,
+        finished_with_failures_cnt: u64,
         #[serde(default)]
-        finished_with_failures_total_time : f64,
+        finished_with_failures_total_time: f64,
         #[serde(default)]
-        failed_cnt : u64,
+        failed_cnt: u64,
         #[serde(default)]
-        failed_total_time : f64
+        failed_total_time: f64,
     },
     TaskComputer {
         #[serde(flatten)]
@@ -125,17 +125,16 @@ enum GolemRequestBody {
     NodeInfo {
         #[serde(flatten)]
         extra: HashMap<String, Value>,
-    }
-
+    },
 }
 
 #[derive(Deserialize, Debug)]
 struct Metadata {
-    net : Option<String>,
-    os : Option<String>,
-    version : Option<String>,
+    net: Option<String>,
+    os: Option<String>,
+    version: Option<String>,
     #[serde(deserialize_with = "string_or_struct")]
-    settings : Settings,
+    settings: Settings,
 
     #[serde(flatten)]
     extra: HashMap<String, Value>,
@@ -143,35 +142,35 @@ struct Metadata {
 
 #[derive(Deserialize, Debug)]
 struct Settings {
-    start_port : Option<u16>,
+    start_port: Option<u16>,
     end_port: Option<u16>,
-    estimated_blender_performance : Option<String>,
-    estimated_lux_performance : Option<String>,
-    estimated_performance : Option<f64>,
-    max_memory_size : Option<u64>,
-    max_price : Option<u64>,
+    estimated_blender_performance: Option<String>,
+    estimated_lux_performance: Option<String>,
+    estimated_performance: Option<f64>,
+    max_memory_size: Option<u64>,
+    max_price: Option<u64>,
     min_price: Option<u64>,
-    max_resource_size : Option<u64>,
-    node_name : Option<String>,
+    max_resource_size: Option<u64>,
+    node_name: Option<String>,
     num_cores: Option<u32>,
 
     #[serde(flatten)]
-    extra: HashMap<String, Value>
+    extra: HashMap<String, Value>,
 }
 
 impl FromStr for Settings {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
-        let env : ObjectEnvelope<Settings> = serde_json::from_str(s)?;
+        let env: ObjectEnvelope<Settings> = serde_json::from_str(s)?;
         Ok(env.obj)
     }
 }
 
 fn string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-    where
-        T: Deserialize<'de> + FromStr<Err = serde_json::Error>,
-        D: Deserializer<'de>,
+where
+    T: Deserialize<'de> + FromStr<Err = serde_json::Error>,
+    D: Deserializer<'de>,
 {
     // This is a Visitor that forwards string types to T's `FromStr` impl and
     // forwards map types to T's `Deserialize` impl. The `PhantomData` is to
@@ -201,10 +200,10 @@ fn string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
             where
                 M: MapAccess<'de>,
         {
-            // `MapAccessDeserializer` is a wrapper that turns a `MapAccess`
-            // into a `Deserializer`, allowing it to be used as the input to T's
-            // `Deserialize` implementation. T then deserializes itself using
-            // the entries from the map visitor.
+    // `MapAccessDeserializer` is a wrapper that turns a `MapAccess`
+    // into a `Deserializer`, allowing it to be used as the input to T's
+    // `Deserialize` implementation. T then deserializes itself using
+    // the entries from the map visitor.
             Deserialize::deserialize(de::value::MapAccessDeserializer::new(visitor))
         }
 
@@ -215,146 +214,162 @@ fn string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 
 #[derive(Serialize, Debug)]
 struct NodeInfoOutput {
-    cliid : String,
+    cliid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sessid : Option<String>,
+    sessid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ip : Option<IpAddr>,
-    timestamp : f64,
+    ip: Option<IpAddr>,
+    timestamp: f64,
     #[serde(flatten)]
-    metadata : MetadataOutput,
+    metadata: MetadataOutput,
     #[serde(flatten)]
-    stats : StatsOutput,
+    stats: StatsOutput,
     #[serde(flatten)]
-    requestor_stats : RequestorStatsOutput,
+    requestor_stats: RequestorStatsOutput,
     #[serde(flatten)]
-    extra : HashMap<String, Value>,
+    extra: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Debug, Default)]
 struct MetadataOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    net : Option<String>,
+    net: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    os : Option<String>,
+    os: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    version : Option<String>,
+    version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    start_port : Option<u16>,
+    start_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     end_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    estimated_blender_performance : Option<String>,
+    estimated_blender_performance: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    estimated_lux_performance : Option<String>,
+    estimated_lux_performance: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    estimated_performance : Option<f64>,
+    estimated_performance: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_memory_size : Option<u64>,
+    max_memory_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_price : Option<u64>,
+    max_price: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     min_price: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_resource_size : Option<u64>,
+    max_resource_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    node_name : Option<String>,
+    node_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    num_cores: Option<u32>
+    num_cores: Option<u32>,
 }
 
 #[derive(Serialize, Debug, Default)]
 struct StatsOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    known_tasks : Option<u64>,
+    known_tasks: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    supported_tasks : Option<u64>,
+    supported_tasks: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tasks_requested : Option<u64>,
+    tasks_requested: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tasks_with_errors : Option<u64>,
+    tasks_with_errors: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tasks_with_timeout : Option<u64>,
+    tasks_with_timeout: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    completed: Option<u64>
+    completed: Option<u64>,
 }
 
 #[derive(Serialize, Debug, Default)]
 struct RequestorStatsOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_tasks_cnt : Option<u64>,
+    rs_tasks_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_finished_task_cnt : Option<u64>,
+    rs_finished_task_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_requested_subtasks_cnt : Option<u64>,
+    rs_requested_subtasks_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_collected_results_cnt : Option<u64>,
+    rs_collected_results_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_verified_results_cnt : Option<u64>,
+    rs_verified_results_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_timed_out_subtasks_cnt : Option<u64>,
+    rs_timed_out_subtasks_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_not_downloadable_subtasks_cnt : Option<u64>,
+    rs_not_downloadable_subtasks_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_failed_subtasks_cnt : Option<u64>,
+    rs_failed_subtasks_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_work_offers_cnt : Option<u64>,
+    rs_work_offers_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_finished_ok_cnt : Option<u64>,
+    rs_finished_ok_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_finished_ok_total_time : Option<f64>,
+    rs_finished_ok_total_time: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_finished_with_failures_cnt : Option<u64>,
+    rs_finished_with_failures_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_finished_with_failures_total_time : Option<f64>,
+    rs_finished_with_failures_total_time: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_failed_cnt : Option<u64>,
+    rs_failed_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rs_failed_total_time : Option<f64>
+    rs_failed_total_time: Option<f64>,
 }
 
 fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashMap<String, Value> {
-    protocol_versions.iter().map(|ent |
-        (format!("protocol_version_{}", ent.0), ent.1.clone()))
+    protocol_versions
+        .iter()
+        .map(|ent| (format!("protocol_version_{}", ent.0), ent.1.clone()))
         .collect()
 }
 
 fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
-    let GolemRequest { cliid, timestamp, body } = envelope.data;
+    let GolemRequest {
+        cliid,
+        timestamp,
+        body,
+    } = envelope.data;
 
     debug!("req type: {:?}", body);
 
     match body {
-        GolemRequestBody::Login { metadata, protocol_versions, sessid, .. } =>
-            Some(NodeInfoOutput {
-                cliid,
-                sessid,
-                ip,
-                timestamp,
-                extra: protocol_versions_to_map(&protocol_versions),
-                stats: StatsOutput::default(),
-                requestor_stats: RequestorStatsOutput::default(),
-                metadata: metadata.map(|m| MetadataOutput {
-                    net: m.net,
-                    os: m.os,
-                    version: m.version,
-                    start_port: m.settings.start_port,
-                    end_port: m.settings.end_port,
-                    estimated_blender_performance: m.settings.estimated_blender_performance,
-                    estimated_lux_performance: m.settings.estimated_lux_performance,
-                    estimated_performance: m.settings.estimated_performance,
-                    max_memory_size: m.settings.max_memory_size,
-                    max_price: m.settings.max_price,
-                    min_price: m.settings.min_price,
-                    max_resource_size: m.settings.max_resource_size,
-                    node_name: m.settings.node_name,
-                    num_cores: m.settings.num_cores,
-                }).unwrap_or(MetadataOutput::default()),
-            }),
+        GolemRequestBody::Login {
+            metadata,
+            protocol_versions,
+            sessid,
+            ..
+        } => Some(NodeInfoOutput {
+            cliid,
+            sessid,
+            ip,
+            timestamp,
+            extra: protocol_versions_to_map(&protocol_versions),
+            stats: StatsOutput::default(),
+            requestor_stats: RequestorStatsOutput::default(),
+            metadata: metadata
+                .map(|m| {
+                    MetadataOutput {
+                        net: m.net,
+                        os: m.os,
+                        version: m.version,
+                        start_port: m.settings.start_port,
+                        end_port: m.settings.end_port,
+                        estimated_blender_performance: m.settings.estimated_blender_performance,
+                        estimated_lux_performance: m.settings.estimated_lux_performance,
+                        estimated_performance: m.settings.estimated_performance,
+                        max_memory_size: m.settings.max_memory_size,
+                        max_price: m.settings.max_price,
+                        min_price: m.settings.min_price,
+                        max_resource_size: m.settings.max_resource_size,
+                        node_name: m.settings.node_name,
+                        num_cores: m.settings.num_cores,
+                    }
+                })
+                .unwrap_or(MetadataOutput::default()),
+        }),
 
         GolemRequestBody::RequestorStats {
-            tasks_cnt, finished_task_cnt, requested_subtasks_cnt,
-            collected_results_cnt, verified_results_cnt,
+            tasks_cnt,
+            finished_task_cnt,
+            requested_subtasks_cnt,
+            collected_results_cnt,
+            verified_results_cnt,
             timed_out_subtasks_cnt,
             not_downloadable_subtasks_cnt,
             failed_subtasks_cnt,
@@ -364,7 +379,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             finished_with_failures_cnt,
             finished_with_failures_total_time,
             failed_cnt,
-            failed_total_time
+            failed_total_time,
         } => Some(NodeInfoOutput {
             cliid,
             sessid: Option::None,
@@ -415,7 +430,6 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 tasks_with_timeout: Some(tasks_with_timeout),
                 tasks_requested: Some(tasks_requested),
             },
-
         }),
 
         v => {
@@ -426,21 +440,19 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
 }
 
 pub struct UpdateHandler {
-    updater : Addr<Unsync, Updater>
+    updater: Addr<Unsync, Updater>,
 }
 
 impl UpdateHandler {
-    pub fn new(redis_actor : Addr<Unsync, RedisActor>) -> UpdateHandler {
-        UpdateHandler {
-            updater : Updater::start(redis_actor)
-        }
+    pub fn new(redis_actor: Addr<Unsync, RedisActor>) -> UpdateHandler {
+        UpdateHandler { updater: Updater::start(redis_actor) }
     }
 }
 
 #[derive(Debug)]
 enum ConvertError {
     JSONError(serde_json::Error),
-    InvalidJson
+    InvalidJson,
 }
 
 impl From<serde_json::Error> for ConvertError {
@@ -449,43 +461,53 @@ impl From<serde_json::Error> for ConvertError {
     }
 }
 
-fn to_hash_map<T : serde::Serialize>(input : T) -> Result<HashMap<String, String>, ConvertError> {
+fn to_hash_map<T: serde::Serialize>(input: T) -> Result<HashMap<String, String>, ConvertError> {
     if let serde_json::Value::Object(map) = serde_json::to_value(input)? {
-        Ok(map
-            .iter()
-            .filter_map(|(k, v)|
-                match v {
+        Ok(
+            map.iter()
+                .filter_map(|(k, v)| match v {
                     serde_json::Value::String(s) => Some((k.clone(), s.clone())),
                     serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
                     serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
-                    _ => None
-            })
-            .collect()
+                    _ => None,
+                })
+                .collect(),
         )
     } else {
         Err(ConvertError::InvalidJson)
     }
 }
 
-fn update_kv(updater : &Addr<Unsync, Updater>, node_info : &NodeInfoOutput)
-        -> Box<Future<Item = HttpResponse, Error=actix_web::Error>> {
+fn update_kv(
+    updater: &Addr<Unsync, Updater>,
+    node_info: &NodeInfoOutput,
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
     let key = format!("nodeinfo.{}", node_info.cliid);
     debug!("nodeinfo {:?}", node_info);
 
     if let Ok(map) = to_hash_map(node_info) {
-        Box::new(updater.send(UpdateKey { key, value: map })
-            .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
-            .and_then(|r| match r {
-                Ok(_v) => future::ok(HttpResponse::Ok().into()),
-                Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!("save: {}", e)))
-            }))
+        Box::new(
+            updater
+                .send(UpdateKey { key, value: map })
+                .map_err(|_e| {
+                    actix_web::error::ErrorInternalServerError("send error")
+                })
+                .and_then(|r| match r {
+                    Ok(_v) => future::ok(HttpResponse::Ok().into()),
+                    Err(e) => future::err(actix_web::error::ErrorInternalServerError(
+                        format!("save: {}", e),
+                    )),
+                }),
+        )
     } else {
-        Box::new(future::err(actix_web::error::ErrorInternalServerError("gen node_info")))
+        Box::new(future::err(
+            actix_web::error::ErrorInternalServerError("gen node_info"),
+        ))
     }
 }
 
 impl Handler<()> for UpdateHandler {
-    type Result = Box<Future<Item = HttpResponse, Error=actix_web::Error>>;
+    type Result = Box<Future<Item = HttpResponse, Error = actix_web::Error>>;
 
     fn handle(&mut self, req: HttpRequest<()>) -> <Self as Handler<()>>::Result {
         let updater = self.updater.clone();
@@ -528,21 +550,29 @@ mod tests {
         {
             println!("envelop {:?}", &r);
             let settings: &Settings = match &r.data.body {
-                &GolemRequestBody::Login { ref metadata, .. } => &metadata.as_ref().unwrap().settings,
-                _ => panic!("login expected")
+                &GolemRequestBody::Login { ref metadata, .. } => {
+                    &metadata.as_ref().unwrap().settings
+                }
+                _ => panic!("login expected"),
             };
             assert_eq!(&settings.extra["use_ipv6"], &json!(0));
         }
 
         let output = to_node_info(r, None);
-        println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
+        println!(
+            "pretty json {}",
+            serde_json::to_string_pretty(&output.unwrap()).unwrap()
+        );
     }
 
     #[test]
     fn parse_stats() {
         let input = include_str!("../test/stats.json");
         let output = to_node_info(serde_json::from_str(input).unwrap(), None);
-        println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
+        println!(
+            "pretty json {}",
+            serde_json::to_string_pretty(&output.unwrap()).unwrap()
+        );
     }
 
 
@@ -550,7 +580,10 @@ mod tests {
     fn parse_requestor_stats() {
         let input = include_str!("../test/requestor-stats.json");
         let output = to_node_info(serde_json::from_str(input).unwrap(), None);
-        println!("pretty json {}", serde_json::to_string_pretty(&output.unwrap()).unwrap());
+        println!(
+            "pretty json {}",
+            serde_json::to_string_pretty(&output.unwrap()).unwrap()
+        );
     }
 
     #[test]
@@ -583,7 +616,7 @@ mod tests {
 //                   "tasks_with_timeout": 0,
 //                   "tasks_requested": 314,
 //                   "sessid": "5bbeefa5-423e-425c-92dd-bde94e2c9777",
-//                   "cliid": "9b70f9e784cb487791e4374879cdde9166a132f8d38fd807de9f2efea04cdd33f05a007495f2d409f205584a4c29737459e01f0a4aba749d9a92912ee0facccd",
+//                   "cliid": "some-fake-cliid",
 //                   "timestamp": 1,
 //                   "type": "Stats"
 //             }
