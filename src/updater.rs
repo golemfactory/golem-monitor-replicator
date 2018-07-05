@@ -68,7 +68,7 @@ fn to_hmset_command(msg: UpdateKey) -> Command {
 
     let mut msg_vec: Vec<RespValue> = Vec::with_capacity(2 + msg.value.len() * 2);
     msg_vec.push("HMSET".into());
-    msg_vec.push(msg.key.into());
+    msg_vec.push(format!("nodeinfo.{}", msg.key).into());
 
     for (key, value) in msg.value {
         msg_vec.push(key.into());
@@ -87,6 +87,8 @@ impl Handler<UpdateKey> for Updater {
         _: &mut Self::Context,
     ) -> <Self as Handler<UpdateKey>>::Result {
         let redis_actor = &self.redis_actor;
+
+        redis_actor.do_send(Command(resp_array!["SADD", "active_nodes", &msg.key]));
 
         let f = redis_actor
             .send(to_hmset_command(msg))

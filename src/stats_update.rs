@@ -473,7 +473,7 @@ impl From<serde_json::Error> for ConvertError {
     }
 }
 
-fn to_hash_map<T: serde::Serialize>(input: T) -> Result<HashMap<String, String>, ConvertError> {
+fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>, ConvertError> {
     if let serde_json::Value::Object(map) = serde_json::to_value(input)? {
         Ok(
             map.iter()
@@ -494,13 +494,12 @@ fn update_kv(
     updater: &Addr<Unsync, Updater>,
     node_info: &NodeInfoOutput,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
-    let key = format!("nodeinfo.{}", node_info.cliid);
-    debug!("nodeinfo {:?}", node_info);
+    debug!("nodeinfo {:?}", &node_info);
 
-    if let Ok(map) = to_hash_map(node_info) {
+    if let Ok(map) = to_hash_map(&node_info) {
         Box::new(
             updater
-                .send(UpdateKey { key, value: map })
+                .send(UpdateKey { key: node_info.cliid.clone(), value: map })
                 .map_err(|_e| {
                     actix_web::error::ErrorInternalServerError("send error")
                 })
@@ -601,7 +600,7 @@ mod tests {
     #[test]
     fn parse_stats_output() {
         let input = include_str!("../test/stats.json");
-        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
+        let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
         println!("output map {:?}", map);
         assert_eq!(map.get("tasks_requested").unwrap(), "22518");
     }
@@ -609,7 +608,7 @@ mod tests {
     #[test]
     fn parse_requestor_stats_output() {
         let input = include_str!("../test/requestor-stats.json");
-        let map = to_hash_map(to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
+        let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
         println!("output map {:?}", map);
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
