@@ -1,0 +1,4 @@
+
+systemctl stop monitor-rust
+systemctl disable monitor-rust
+

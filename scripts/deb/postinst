@@ -1,0 +1,5 @@
+
+
+systemctl enable monitor-rust
+systemctl start monitor-rust
+
