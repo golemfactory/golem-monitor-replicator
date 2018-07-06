@@ -1,3 +1,4 @@
+use super::get_client_ip;
 use actix::Arbiter;
 use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
 use futures::future;
@@ -5,7 +6,6 @@ use futures::prelude::*;
 use nom::AsBytes;
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use super::get_client_ip;
 use tokio_core::net::TcpStream;
 use tokio_core::reactor;
 use url::form_urlencoded::parse;
@@ -109,7 +109,6 @@ fn duration_to_secs(d: &Duration) -> f64 {
 fn time_diff(base: SystemTime, other: SystemTime) -> f64 {
     if base < other {
         -duration_to_secs(&other.duration_since(base).unwrap())
-
     } else {
         duration_to_secs(&base.duration_since(other).unwrap())
     }
@@ -134,21 +133,20 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
         .and_then(move |(b, ports): (PingMe, Vec<u16>)| {
             let timestamp = UNIX_EPOCH + Duration::from_millis((b.timestamp * 1000.0f64) as u64);
 
-            let l: Box<Future<Item = Vec<PortStatus>, Error = actix_web::Error>> =
-                match client_ip {
-                    Some(ref addr) => ping_multi(&addr, &ports),
-                    _ => Box::new(future::err(actix_web::error::ErrorInternalServerError(
-                        "source address not valid",
-                    ))),
-                };
+            let l: Box<Future<Item = Vec<PortStatus>, Error = actix_web::Error>> = match client_ip {
+                Some(ref addr) => ping_multi(&addr, &ports),
+                _ => Box::new(future::err(actix_web::error::ErrorInternalServerError(
+                    "source address not valid",
+                ))),
+            };
 
             l.and_then(move |port_statuses| {
                 let success = port_statuses.iter().all(|port_status| port_status.is_open);
                 let mut description = String::new();
 
-                for l in port_statuses.iter().map(|port_status| {
-                    format!("{}: {}", port_status.port, port_status.description)
-                })
+                for l in port_statuses
+                    .iter()
+                    .map(|port_status| format!("{}: {}", port_status.port, port_status.description))
                 {
                     if !description.is_empty() {
                         description.push('\n');
@@ -163,7 +161,10 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
                     time_diff: time_diff(system_time, timestamp),
                 };
 
-                debug!("ping-me for IP: {:?} response {:?}", client_ip, ping_me_result);
+                debug!(
+                    "ping-me for IP: {:?} response {:?}",
+                    client_ip, ping_me_result
+                );
 
                 Ok(HttpResponse::Ok().json(ping_me_result).into())
             })
@@ -206,9 +207,8 @@ fn parse_url_params(input: &[u8]) -> PingMe {
 
 #[cfg(test)]
 mod tests {
-    use serde_json;
     use super::*;
-
+    use serde_json;
 
     #[test]
     fn test_parse() {
@@ -274,8 +274,7 @@ mod tests {
     #[test]
     fn test_parse_unknown() {
         let ping_me = parse_url_params(
-            "portsa=40102&portsb=40103&ports=3282&timestamp=1530717930.2452438"
-                .as_bytes(),
+            "portsa=40102&portsb=40103&ports=3282&timestamp=1530717930.2452438".as_bytes(),
         );
         assert_eq!(
             ping_me,
