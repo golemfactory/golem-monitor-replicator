@@ -1,6 +1,9 @@
 [package]
 name = "golem-monitor-rust"
 version = "0.2.0"
+license = "MIT"
+publish=false
+authors=["golemfactory"]
 
 [dependencies]
 actix = "0.5"
@@ -29,4 +32,13 @@ stats_update = []
 
 [profile.release]
 lto = true
-overflow-checks = true
+
+[package.metadata.deb]
+depends = "$auto, systemd"
+assets = [
+    ["target/release/golem-monitor-rust", "usr/sbin/", "755"],
+    ["scripts/monitor-rust.service", "lib/systemd/system/", "644"],
+    ["scripts/golem-monitor-replicator","etc/", "644"]
+]
+conf-files=["etc/golem-monitor-replicator"]
+maintainer-scripts="scripts/deb"

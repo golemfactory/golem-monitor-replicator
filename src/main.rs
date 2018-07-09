@@ -1,6 +1,6 @@
 extern crate actix;
-extern crate actix_web;
 extern crate actix_redis;
+extern crate actix_web;
 extern crate serde;
 
 extern crate url;
@@ -19,19 +19,18 @@ extern crate log;
 
 extern crate config;
 
-use actix_web::{http, server, App, HttpRequest, HttpMessage, HttpResponse};
-use config::{ConfigError, Config, File, Environment};
+use actix_web::{http, server, App, HttpMessage, HttpRequest, HttpResponse};
+use config::{Config, ConfigError, Environment, File};
 use std::net::IpAddr;
 
 #[cfg_attr(feature = "stats_update", macro_use)]
-extern crate redis_async;
-#[cfg_attr(feature = "stats_update", macro_use)]
 extern crate failure;
+#[cfg_attr(feature = "stats_update", macro_use)]
+extern crate redis_async;
 #[cfg(feature = "stats_update")]
 mod stats_update;
 #[cfg(feature = "stats_update")]
 mod updater;
-
 
 #[cfg(feature = "pingme")]
 extern crate bytes;
@@ -94,8 +93,11 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
         let update_handler_update = stats_update::UpdateHandler::new(redis_actor);
 
         app.resource("/", move |r| {
-            r.method(http::Method::GET).h(|_r|
-                HttpResponse::MovedPermanenty().header("Location", "/show").finish());
+            r.method(http::Method::GET).h(|_r| {
+                HttpResponse::MovedPermanenty()
+                    .header("Location", "/show")
+                    .finish()
+            });
             r.method(http::Method::POST).h(update_handler_root)
         }).resource("/update", |r| {
             r.method(http::Method::POST).h(update_handler_update)
@@ -109,7 +111,6 @@ fn route_stats_update(_: String) -> impl Fn(App) -> App {
 }
 
 fn main() {
-
     if ::std::env::var("RUST_LOG").is_err() {
         ::std::env::set_var(
             "RUST_LOG",

@@ -31,10 +31,8 @@ impl Actor for Updater {
             .send(Command(resp_array![
                 "CLIENT",
                 "SETNAME",
-                format!(
-                    "monitor-thread-{:?}",
-                    ::std::thread::current().id()
-                )]))
+                format!("monitor-thread-{:?}", ::std::thread::current().id())
+            ]))
             .map(|_r| ())
             .map_err(|e| warn!("CLIENT SETNAME error {:?}", e))
             .into_actor(self)
@@ -55,7 +53,6 @@ pub enum Error {
     #[fail(display = "MailboxError {}", _0)]
     MailboxError(actix::MailboxError),
 }
-
 
 impl From<MailboxError> for Error {
     fn from(err: MailboxError) -> Self {

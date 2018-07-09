@@ -1,24 +1,24 @@
+use super::get_client_ip;
 use actix::prelude::*;
 use actix_redis::RedisActor;
-use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
 use actix_web::dev::Handler;
+use actix_web::{self, AsyncResponder, HttpMessage, HttpRequest, HttpResponse};
 use futures::future;
 use futures::future::Future;
-use serde::{Deserialize, Deserializer};
 use serde;
 use serde::de;
 use serde::de::MapAccess;
 use serde::de::Visitor;
+use serde::{Deserialize, Deserializer};
 use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::net::IpAddr;
 use std::str::FromStr;
-use super::get_client_ip;
-use updater::{UpdateKey, Updater};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use updater::{UpdateKey, Updater};
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -149,7 +149,7 @@ struct Settings {
     estimated_blender_performance: Option<String>,
     estimated_lux_performance: Option<String>,
     estimated_performance: Option<f64>,
-    max_memory_size: Option<u64>,
+    max_memory_size: Option<f64>,
     max_price: Option<u64>,
     min_price: Option<u64>,
     max_resource_size: Option<u64>,
@@ -182,8 +182,8 @@ where
     struct StringOrStruct<T>(PhantomData<fn() -> T>);
 
     impl<'de, T> Visitor<'de> for StringOrStruct<T>
-        where
-            T: Deserialize<'de> + FromStr<Err = serde_json::Error>,
+    where
+        T: Deserialize<'de> + FromStr<Err = serde_json::Error>,
     {
         type Value = T;
 
@@ -192,23 +192,22 @@ where
         }
 
         fn visit_str<E>(self, value: &str) -> Result<T, E>
-            where
-                E: de::Error,
+        where
+            E: de::Error,
         {
-            Ok(FromStr::from_str(value).unwrap())
+            FromStr::from_str(value).map_err(|e| serde::de::Error::custom(e))
         }
 
         fn visit_map<M>(self, visitor: M) -> Result<T, M::Error>
-            where
-                M: MapAccess<'de>,
+        where
+            M: MapAccess<'de>,
         {
-    // `MapAccessDeserializer` is a wrapper that turns a `MapAccess`
-    // into a `Deserializer`, allowing it to be used as the input to T's
-    // `Deserialize` implementation. T then deserializes itself using
-    // the entries from the map visitor.
+            // `MapAccessDeserializer` is a wrapper that turns a `MapAccess`
+            // into a `Deserializer`, allowing it to be used as the input to T's
+            // `Deserialize` implementation. T then deserializes itself using
+            // the entries from the map visitor.
             Deserialize::deserialize(de::value::MapAccessDeserializer::new(visitor))
         }
-
     }
 
     deserializer.deserialize_any(StringOrStruct(PhantomData))
@@ -330,11 +329,7 @@ fn now_in_millis() -> u64 {
 }
 
 fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
-    let GolemRequest {
-        cliid,
-        body,
-        ..
-    } = envelope.data;
+    let GolemRequest { cliid, body, .. } = envelope.data;
 
     let timestamp = now_in_millis();
 
@@ -355,23 +350,21 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             stats: StatsOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
             metadata: metadata
-                .map(|m| {
-                    MetadataOutput {
-                        net: m.net,
-                        os: m.os,
-                        version: m.version,
-                        start_port: m.settings.start_port,
-                        end_port: m.settings.end_port,
-                        estimated_blender_performance: m.settings.estimated_blender_performance,
-                        estimated_lux_performance: m.settings.estimated_lux_performance,
-                        estimated_performance: m.settings.estimated_performance,
-                        max_memory_size: m.settings.max_memory_size,
-                        max_price: m.settings.max_price,
-                        min_price: m.settings.min_price,
-                        max_resource_size: m.settings.max_resource_size,
-                        node_name: m.settings.node_name,
-                        num_cores: m.settings.num_cores,
-                    }
+                .map(|m| MetadataOutput {
+                    net: m.net,
+                    os: m.os,
+                    version: m.version,
+                    start_port: m.settings.start_port,
+                    end_port: m.settings.end_port,
+                    estimated_blender_performance: m.settings.estimated_blender_performance,
+                    estimated_lux_performance: m.settings.estimated_lux_performance,
+                    estimated_performance: m.settings.estimated_performance,
+                    max_memory_size: m.settings.max_memory_size.map(|f| f.trunc() as u64),
+                    max_price: m.settings.max_price,
+                    min_price: m.settings.min_price,
+                    max_resource_size: m.settings.max_resource_size,
+                    node_name: m.settings.node_name,
+                    num_cores: m.settings.num_cores,
                 })
                 .unwrap_or(MetadataOutput::default()),
         }),
@@ -457,7 +450,9 @@ pub struct UpdateHandler {
 
 impl UpdateHandler {
     pub fn new(redis_actor: Addr<Unsync, RedisActor>) -> UpdateHandler {
-        UpdateHandler { updater: Updater::start(redis_actor) }
+        UpdateHandler {
+            updater: Updater::start(redis_actor),
+        }
     }
 }
 
@@ -475,16 +470,14 @@ impl From<serde_json::Error> for ConvertError {
 
 fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>, ConvertError> {
     if let serde_json::Value::Object(map) = serde_json::to_value(input)? {
-        Ok(
-            map.iter()
-                .filter_map(|(k, v)| match v {
-                    serde_json::Value::String(s) => Some((k.clone(), s.clone())),
-                    serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
-                    serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
-                    _ => None,
-                })
-                .collect(),
-        )
+        Ok(map.iter()
+            .filter_map(|(k, v)| match v {
+                serde_json::Value::String(s) => Some((k.clone(), s.clone())),
+                serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
+                serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
+                _ => None,
+            })
+            .collect())
     } else {
         Err(ConvertError::InvalidJson)
     }
@@ -499,21 +492,23 @@ fn update_kv(
     if let Ok(map) = to_hash_map(&node_info) {
         Box::new(
             updater
-                .send(UpdateKey { key: node_info.cliid.clone(), value: map })
-                .map_err(|_e| {
-                    actix_web::error::ErrorInternalServerError("send error")
+                .send(UpdateKey {
+                    key: node_info.cliid.clone(),
+                    value: map,
                 })
+                .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
                 .and_then(|r| match r {
                     Ok(_v) => future::ok(HttpResponse::Ok().into()),
-                    Err(e) => future::err(actix_web::error::ErrorInternalServerError(
-                        format!("save: {}", e),
-                    )),
+                    Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
+                        "save: {}",
+                        e
+                    ))),
                 }),
         )
     } else {
-        Box::new(future::err(
-            actix_web::error::ErrorInternalServerError("gen node_info"),
-        ))
+        Box::new(future::err(actix_web::error::ErrorInternalServerError(
+            "gen node_info",
+        )))
     }
 }
 
@@ -548,13 +543,12 @@ impl Handler<()> for UpdateHandler {
 
 #[cfg(test)]
 mod tests {
-    use serde_json;
     use super::*;
+    use serde_json;
 
     #[test]
     fn parse_login() {
         let input = include_str!("../test/login.json");
-
 
         let r: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
 
@@ -577,6 +571,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_login_f64() {
+        let input = include_str!("../test/login-f64.json");
+        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+    }
+
+    #[test]
     fn parse_stats() {
         let input = include_str!("../test/stats.json");
         let output = to_node_info(serde_json::from_str(input).unwrap(), None);
@@ -585,7 +585,6 @@ mod tests {
             serde_json::to_string_pretty(&output.unwrap()).unwrap()
         );
     }
-
 
     #[test]
     fn parse_requestor_stats() {

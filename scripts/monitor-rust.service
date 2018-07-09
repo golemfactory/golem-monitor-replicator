@@ -1,0 +1,17 @@
+[Unit]                                                                                                                                                                          
+Description=monitor
+Documentation=https://github.com/imapp-pl/golem-monitor-replicator 
+After=network.target
+
+[Service]
+User=nobody
+EnvironmentFile=/etc/golem-monitor-replicator
+ExecStart=/usr/sbin/golem-monitor-rust
+LimitNOFILE=50000
+StandardOutput=syslog+console
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+
