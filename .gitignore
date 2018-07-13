@@ -1,0 +1,4 @@
+git-journal.bash
+/.idea
+/target
+**/*.rs.bk

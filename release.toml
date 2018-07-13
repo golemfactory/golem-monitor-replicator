@@ -1,0 +1,4 @@
+pre-release-commit-message="[Bump] {{version}} :cargo-release:"
+pro-release-commit-message="[Release] {{version}} :cargo-release:"
+no-dev-version=true
+
