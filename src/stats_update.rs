@@ -152,7 +152,7 @@ struct Settings {
     max_memory_size: Option<f64>,
     max_price: Option<u64>,
     min_price: Option<u64>,
-    max_resource_size: Option<u64>,
+    max_resource_size: Option<f64>,
     node_name: Option<String>,
     num_cores: Option<u32>,
 
@@ -362,7 +362,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     max_memory_size: m.settings.max_memory_size.map(|f| f.trunc() as u64),
                     max_price: m.settings.max_price,
                     min_price: m.settings.min_price,
-                    max_resource_size: m.settings.max_resource_size,
+                    max_resource_size: m.settings.max_resource_size.map(|f| f.trunc() as u64),
                     node_name: m.settings.node_name,
                     num_cores: m.settings.num_cores,
                 })
@@ -571,8 +571,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_login_f64() {
+    fn parse_login_max_memory_size_f64() {
         let input = include_str!("../test/login-f64.json");
+        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+    }
+
+    #[test]
+    fn parse_login_max_resource_size_f64() {
+        let input = include_str!("../test/login-resource-float.json");
         let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
     }
 
