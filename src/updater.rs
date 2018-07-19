@@ -34,7 +34,7 @@ impl Actor for Updater {
                 "SETNAME",
                 format!("monitor-thread-{:?}", ::std::thread::current().id())
             ]))
-            .map(|_r| ()) // What does that mean??
+            .map(|_r| ())
             .map_err(|e| warn!("CLIENT SETNAME error {:?}", e))
             .into_actor(self)
             .wait(ctx);
