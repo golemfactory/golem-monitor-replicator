@@ -15,6 +15,7 @@ impl Updater {
 
 #[derive(Debug)]
 pub struct UpdateKey {
+    pub collection: String,
     pub key: String,
     pub value: HashMap<String, String>,
 }
@@ -33,7 +34,7 @@ impl Actor for Updater {
                 "SETNAME",
                 format!("monitor-thread-{:?}", ::std::thread::current().id())
             ]))
-            .map(|_r| ())
+            .map(|_r| ()) // What does that mean??
             .map_err(|e| warn!("CLIENT SETNAME error {:?}", e))
             .into_actor(self)
             .wait(ctx);
@@ -60,12 +61,13 @@ impl From<MailboxError> for Error {
     }
 }
 
+
 fn to_hmset_command(msg: UpdateKey) -> Command {
     debug!("preparing command for {:?}", msg);
 
     let mut msg_vec: Vec<RespValue> = Vec::with_capacity(2 + msg.value.len() * 2);
     msg_vec.push("HMSET".into());
-    msg_vec.push(format!("nodeinfo.{}", msg.key).into());
+    msg_vec.push(format!("{}.{}", msg.collection, msg.key).into());
 
     for (key, value) in msg.value {
         msg_vec.push(key.into());
@@ -83,6 +85,7 @@ impl Handler<UpdateKey> for Updater {
         msg: UpdateKey,
         _: &mut Self::Context,
     ) -> <Self as Handler<UpdateKey>>::Result {
+
         let redis_actor = &self.redis_actor;
 
         redis_actor.do_send(Command(resp_array!["SADD", "active_nodes", &msg.key]));

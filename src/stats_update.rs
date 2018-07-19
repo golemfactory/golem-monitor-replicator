@@ -12,6 +12,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
 use serde_json::{self, Value};
 use std::collections::HashMap;
+use std::vec::Vec;
 use std::fmt;
 use std::marker::PhantomData;
 use std::net::IpAddr;
@@ -85,6 +86,7 @@ enum GolemRequestBody {
         extra: HashMap<String, Value>,
     },
     P2PSnapshot {
+        p2p_snapshot: Vec<P2PSnapshotDetails>,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
@@ -129,6 +131,20 @@ enum GolemRequestBody {
         extra: HashMap<String, Value>,
     },
 }
+
+#[derive(Deserialize, Serialize, Debug)]
+struct P2PSnapshotDetails {
+    address: String, // "82.181.59.43",
+    client_ver: String, // "0.15.1",
+    conn_id: Option<String>, // null,
+    degree: u64, // 10,
+    key_id: String, // "f5a23ddb2f5c19833147c859a307d73f0e12f22125be1d7818a5270028463982808a968ccedd753f766ce1ff79a76f2b63867f89e4e521ff09f9db4f32b0d8b3",
+    listen_port: u64, // 40102,
+    node_name: String, // "DimsGolem-6600K",
+    port: u64, // 6164,
+    verified: bool, // true
+}
+
 
 #[derive(Deserialize, Debug)]
 struct Metadata {
@@ -231,6 +247,41 @@ struct NodeInfoOutput {
     extra: HashMap<String, Value>,
 }
 
+#[derive(Serialize, Debug)]
+struct P2PInfoOutput {
+    cliid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<IpAddr>,
+    timestamp: u64,
+    p2pstats: Vec<P2PSnapshotDetails>,
+    #[serde(flatten)]
+    extra: HashMap<String, Value>,
+}
+
+#[derive(Serialize, Debug)]
+enum InfoOutput {
+    Node(NodeInfoOutput),
+    P2P(P2PInfoOutput)
+}
+
+impl InfoOutput {
+    fn get_collection(&self) -> String {
+        match self {
+            &InfoOutput::Node(_) => "nodeinfo".to_string(),
+            &InfoOutput::P2P(_) => "p2pinfo".to_string()
+        }
+    }
+
+    fn get_cliid(&self) -> String {
+        match self {
+            &InfoOutput::Node(ref x) => x.cliid.clone(),
+            &InfoOutput::P2P(ref x) => x.cliid.clone()
+        }
+    }
+}
+
+
+
 #[derive(Serialize, Debug, Default)]
 struct MetadataOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -328,7 +379,7 @@ fn now_in_millis() -> u64 {
     secs * 1000 + millis
 }
 
-fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
+fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<InfoOutput> {
     let GolemRequest { cliid, body, .. } = envelope.data;
 
     let timestamp = now_in_millis();
@@ -341,7 +392,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             protocol_versions,
             sessid,
             ..
-        } => Some(NodeInfoOutput {
+        } => Some(InfoOutput::Node(NodeInfoOutput {
             cliid,
             sessid,
             ip,
@@ -367,7 +418,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     num_cores: m.settings.num_cores,
                 })
                 .unwrap_or(MetadataOutput::default()),
-        }),
+        })),
 
         GolemRequestBody::RequestorStats {
             tasks_cnt,
@@ -385,7 +436,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             finished_with_failures_total_time,
             failed_cnt,
             failed_total_time,
-        } => Some(NodeInfoOutput {
+        } => Some(InfoOutput::Node(NodeInfoOutput {
             cliid,
             sessid: Option::None,
             ip,
@@ -410,7 +461,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 rs_finished_with_failures_total_time: Some(finished_with_failures_total_time),
                 rs_work_offers_cnt: Some(work_offers_cnt),
             },
-        }),
+        })),
+
         GolemRequestBody::Stats {
             known_tasks,
             supported_tasks,
@@ -419,7 +471,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             tasks_with_timeout,
             tasks_requested,
             ..
-        } => Some(NodeInfoOutput {
+        } => Some(InfoOutput::Node(NodeInfoOutput {
             cliid,
             sessid: Option::None,
             ip,
@@ -435,7 +487,20 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 tasks_with_timeout: Some(tasks_with_timeout),
                 tasks_requested: Some(tasks_requested),
             },
-        }),
+        })),
+
+
+        GolemRequestBody::P2PSnapshot {
+            p2p_snapshot,
+            extra
+        } => Some(InfoOutput::P2P(P2PInfoOutput {
+            cliid,
+            ip,
+            timestamp,
+            p2pstats: p2p_snapshot,
+            extra: extra
+        })),
+
 
         v => {
             warn!("unsupported info: {:?}", v);
@@ -475,6 +540,7 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
                 serde_json::Value::String(s) => Some((k.clone(), s.clone())),
                 serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
                 serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
+                o @ serde_json::Value::Array(_) => Some((k.clone(), o.to_string())),
                 _ => None,
             })
             .collect())
@@ -485,16 +551,19 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
 
 fn update_kv(
     updater: &Addr<Unsync, Updater>,
-    node_info: &NodeInfoOutput,
+    info_output: &InfoOutput,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
-    debug!("nodeinfo {:?}", &node_info);
-
-    if let Ok(map) = to_hash_map(&node_info) {
+    debug!("info output {:?}", &info_output);
+    if let Ok(map) = match info_output { //FIXME it's quite ugly
+            &InfoOutput::Node(ref elem) => to_hash_map(&elem),
+            &InfoOutput::P2P(ref elem) => to_hash_map(&elem)
+    } {
         Box::new(
             updater
                 .send(UpdateKey {
-                    key: node_info.cliid.clone(),
-                    value: map,
+                            collection: info_output.get_collection(),
+                            key: info_output.get_cliid(),
+                            value: map,
                 })
                 .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
                 .and_then(|r| match r {
@@ -507,7 +576,7 @@ fn update_kv(
         )
     } else {
         Box::new(future::err(actix_web::error::ErrorInternalServerError(
-            "gen node_info",
+            "gen info_output",
         )))
     }
 }
@@ -529,7 +598,7 @@ impl Handler<()> for UpdateHandler {
             .from_err()
             .and_then(move |envelope| Ok(to_node_info(envelope, client_ip)))
             .and_then(move |opt| match opt {
-                    Some(node_info) => update_kv(&updater, &node_info),
+                    Some(info_output) => update_kv(&updater, &info_output),
                     None => Box::new(future::ok(HttpResponse::Ok().into()))
             }).or_else(|e : actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
