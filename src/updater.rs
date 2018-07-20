@@ -14,15 +14,39 @@ impl Updater {
 }
 
 #[derive(Debug)]
-pub struct UpdateKey {
+pub struct UpdateMap {
     pub collection: String,
     pub key: String,
     pub value: HashMap<String, String>,
 }
 
-impl Message for UpdateKey {
+#[derive(Debug)]
+pub struct UpdateVal {
+    pub collection: String,
+    pub key: String,
+    pub value: String,
+}
+
+
+#[derive(Debug)]
+pub enum UpdateRedis {
+    UpdateRedisMap(UpdateMap),
+    UpdateRedisVal(UpdateVal)
+}
+
+
+impl Message for UpdateRedis {
     type Result = Result<(), Error>;
 }
+
+//impl Message for UpdateMap {
+//    type Result = Result<(), Error>;
+//}
+//
+//impl Message for UpdateVal {
+//    type Result = Result<(), Error>;
+//}
+
 
 impl Actor for Updater {
     type Context = Context<Self>;
@@ -62,7 +86,7 @@ impl From<MailboxError> for Error {
 }
 
 
-fn to_hmset_command(msg: UpdateKey) -> Command {
+fn to_hmset_command(msg: UpdateMap) -> Command {
     debug!("preparing command for {:?}", msg);
 
     let mut msg_vec: Vec<RespValue> = Vec::with_capacity(2 + msg.value.len() * 2);
@@ -77,27 +101,40 @@ fn to_hmset_command(msg: UpdateKey) -> Command {
     Command(RespValue::Array(msg_vec))
 }
 
-impl Handler<UpdateKey> for Updater {
+fn to_set_command(msg: UpdateVal) -> Command {
+    debug!("preparing command for {:?}", msg);
+    let key = format!["{}.{}", msg.collection, msg.key];
+    Command(resp_array!["SET", key, msg.value])
+}
+
+impl Handler<UpdateRedis> for Updater {
     type Result = ActorResponse<Updater, (), Error>;
 
     fn handle(
         &mut self,
-        msg: UpdateKey,
+        msg: UpdateRedis,
         _: &mut Self::Context,
-    ) -> <Self as Handler<UpdateKey>>::Result {
+    ) -> <Self as Handler<UpdateRedis>>::Result {
 
         let redis_actor = &self.redis_actor;
 
-        redis_actor.do_send(Command(resp_array!["SADD", "active_nodes", &msg.key]));
+        if let UpdateRedis::UpdateRedisMap(ref msg) = msg {
+            redis_actor.do_send(Command(resp_array!["SADD", "active_nodes", &msg.key]));
+        }
 
         let f = redis_actor
-            .send(to_hmset_command(msg))
-            .into_actor(self)
+            .send(match msg {
+                UpdateRedis::UpdateRedisMap(u) => to_hmset_command(u),
+                UpdateRedis::UpdateRedisVal(u) => to_set_command(u)
+            }).into_actor(self)
             .map_err(|e, _, _| {
                 error!("update key error {:?}", &e);
                 e.into()
             })
             .map(|r, _, _| debug!("resp={:?}", r));
+
+
+
 
         ActorResponse::async(f)
     }

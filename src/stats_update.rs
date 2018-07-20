@@ -12,14 +12,13 @@ use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
 use serde_json::{self, Value};
 use std::collections::HashMap;
-use std::vec::Vec;
 use std::fmt;
 use std::marker::PhantomData;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use updater::{UpdateKey, Updater};
+use updater::{UpdateRedis, Updater, UpdateMap, UpdateVal};
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -43,7 +42,7 @@ struct GolemRequest {
     body: GolemRequestBody,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(tag = "type")]
 enum GolemRequestBody {
     Login {
@@ -86,7 +85,6 @@ enum GolemRequestBody {
         extra: HashMap<String, Value>,
     },
     P2PSnapshot {
-        p2p_snapshot: Vec<P2PSnapshotDetails>,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
@@ -133,20 +131,6 @@ enum GolemRequestBody {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-struct P2PSnapshotDetails {
-    address: String, // "82.181.59.43",
-    client_ver: String, // "0.15.1",
-    conn_id: Option<String>, // null,
-    degree: u64, // 10,
-    key_id: String, // "f5a23ddb2f5c19833147c859a307d73f0e12f22125be1d7818a5270028463982808a968ccedd753f766ce1ff79a76f2b63867f89e4e521ff09f9db4f32b0d8b3",
-    listen_port: u64, // 40102,
-    node_name: String, // "DimsGolem-6600K",
-    port: u64, // 6164,
-    verified: bool, // true
-}
-
-
-#[derive(Deserialize, Debug)]
 struct Metadata {
     net: Option<String>,
     os: Option<String>,
@@ -158,7 +142,7 @@ struct Metadata {
     extra: HashMap<String, Value>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct Settings {
     start_port: Option<u16>,
     end_port: Option<u16>,
@@ -246,41 +230,6 @@ struct NodeInfoOutput {
     #[serde(flatten)]
     extra: HashMap<String, Value>,
 }
-
-#[derive(Serialize, Debug)]
-struct P2PInfoOutput {
-    cliid: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ip: Option<IpAddr>,
-    timestamp: u64,
-    p2pstats: Vec<P2PSnapshotDetails>,
-    #[serde(flatten)]
-    extra: HashMap<String, Value>,
-}
-
-#[derive(Serialize, Debug)]
-enum InfoOutput {
-    Node(NodeInfoOutput),
-    P2P(P2PInfoOutput)
-}
-
-impl InfoOutput {
-    fn get_collection(&self) -> String {
-        match self {
-            &InfoOutput::Node(_) => "nodeinfo".to_string(),
-            &InfoOutput::P2P(_) => "p2pinfo".to_string()
-        }
-    }
-
-    fn get_cliid(&self) -> String {
-        match self {
-            &InfoOutput::Node(ref x) => x.cliid.clone(),
-            &InfoOutput::P2P(ref x) => x.cliid.clone()
-        }
-    }
-}
-
-
 
 #[derive(Serialize, Debug, Default)]
 struct MetadataOutput {
@@ -379,8 +328,7 @@ fn now_in_millis() -> u64 {
     secs * 1000 + millis
 }
 
-fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<InfoOutput> {
-    let GolemRequest { cliid, body, .. } = envelope.data;
+fn to_node_info(cliid: String, body: GolemRequestBody, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
 
     let timestamp = now_in_millis();
 
@@ -392,7 +340,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             protocol_versions,
             sessid,
             ..
-        } => Some(InfoOutput::Node(NodeInfoOutput {
+        } => Some(NodeInfoOutput {
             cliid,
             sessid,
             ip,
@@ -418,7 +366,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     num_cores: m.settings.num_cores,
                 })
                 .unwrap_or(MetadataOutput::default()),
-        })),
+        }),
 
         GolemRequestBody::RequestorStats {
             tasks_cnt,
@@ -436,7 +384,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             finished_with_failures_total_time,
             failed_cnt,
             failed_total_time,
-        } => Some(InfoOutput::Node(NodeInfoOutput {
+        } => Some(NodeInfoOutput {
             cliid,
             sessid: Option::None,
             ip,
@@ -461,8 +409,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 rs_finished_with_failures_total_time: Some(finished_with_failures_total_time),
                 rs_work_offers_cnt: Some(work_offers_cnt),
             },
-        })),
-
+        }),
         GolemRequestBody::Stats {
             known_tasks,
             supported_tasks,
@@ -471,7 +418,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             tasks_with_timeout,
             tasks_requested,
             ..
-        } => Some(InfoOutput::Node(NodeInfoOutput {
+        } => Some(NodeInfoOutput {
             cliid,
             sessid: Option::None,
             ip,
@@ -487,20 +434,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 tasks_with_timeout: Some(tasks_with_timeout),
                 tasks_requested: Some(tasks_requested),
             },
-        })),
-
-
-        GolemRequestBody::P2PSnapshot {
-            p2p_snapshot,
-            extra
-        } => Some(InfoOutput::P2P(P2PInfoOutput {
-            cliid,
-            ip,
-            timestamp,
-            p2pstats: p2p_snapshot,
-            extra: extra
-        })),
-
+        }),
 
         v => {
             warn!("unsupported info: {:?}", v);
@@ -540,7 +474,6 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
                 serde_json::Value::String(s) => Some((k.clone(), s.clone())),
                 serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
                 serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
-                o @ serde_json::Value::Array(_) => Some((k.clone(), o.to_string())),
                 _ => None,
             })
             .collect())
@@ -549,36 +482,54 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
     }
 }
 
-fn update_kv(
+fn push_node_info(
     updater: &Addr<Unsync, Updater>,
-    info_output: &InfoOutput,
+    node_info: &NodeInfoOutput,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
-    debug!("info output {:?}", &info_output);
-    if let Ok(map) = match info_output { //FIXME it's quite ugly
-            &InfoOutput::Node(ref elem) => to_hash_map(&elem),
-            &InfoOutput::P2P(ref elem) => to_hash_map(&elem)
-    } {
-        Box::new(
-            updater
-                .send(UpdateKey {
-                            collection: info_output.get_collection(),
-                            key: info_output.get_cliid(),
-                            value: map,
-                })
-                .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
-                .and_then(|r| match r {
-                    Ok(_v) => future::ok(HttpResponse::Ok().into()),
-                    Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
-                        "save: {}",
-                        e
-                    ))),
-                }),
-        )
+    debug!("nodeinfo {:?}", &node_info);
+
+    if let Ok(map) = to_hash_map(&node_info) {
+        let msg = UpdateRedis::UpdateRedisMap(UpdateMap {
+            collection: "nodeinfo".to_string(),
+            key: node_info.cliid.clone(),
+            value: map,
+        });
+        push_msg_to_redis(updater, msg)
     } else {
         Box::new(future::err(actix_web::error::ErrorInternalServerError(
-            "gen info_output",
+            "gen node_info",
         )))
     }
+}
+
+fn push_p2pstats(
+    cliid: String,
+    updater: &Addr<Unsync, Updater>,
+    value: String,
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    debug!("p2pstats {:?}", &value);
+    let msg = UpdateRedis::UpdateRedisVal(UpdateVal {
+        collection: "p2pstats".to_string(),
+        key: cliid.to_string(),
+        value: value.to_string(),
+    });
+
+    push_msg_to_redis(updater, msg)
+}
+
+fn push_msg_to_redis(
+    updater: &Addr<Unsync, Updater>,
+    update_msg: UpdateRedis
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    Box::new(updater.send(update_msg)
+            .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
+            .and_then(|r| match r {
+              Ok(_v) => future::ok(HttpResponse::Ok().into()),
+              Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
+                  "save: {}",
+                  e
+              )))})
+    )
 }
 
 impl Handler<()> for UpdateHandler {
@@ -594,12 +545,20 @@ impl Handler<()> for UpdateHandler {
             info!("no client IP")
         }
 
-        req.json() // here json is converted to Envelope<StatsRequests>
+        req.json()
             .from_err()
-            .and_then(move |envelope| Ok(to_node_info(envelope, client_ip)))
-            .and_then(move |opt| match opt {
-                    Some(info_output) => update_kv(&updater, &info_output),
-                    None => Box::new(future::ok(HttpResponse::Ok().into()))
+            .and_then(move |envelope: Envelope<GolemRequest>| {
+                let GolemRequest { cliid, body, .. } = envelope.data;
+                match body {
+                    GolemRequestBody::P2PSnapshot { extra } => match serde_json::to_string(&extra) {
+                            Ok(extra) => push_p2pstats(cliid, &updater, extra),
+                            Err(e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
+                        }
+                    _ => match to_node_info(cliid, body, client_ip) {
+                            Some(node_info) => push_node_info(&updater, &node_info),
+                            None => Box::new(future::ok(HttpResponse::Ok().into()))
+                        }
+                }
             }).or_else(|e : actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
