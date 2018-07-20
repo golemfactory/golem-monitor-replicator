@@ -328,7 +328,13 @@ fn now_in_millis() -> u64 {
     secs * 1000 + millis
 }
 
-fn to_node_info(cliid: String, body: GolemRequestBody, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
+
+// The signature of this function should be
+// fn to_node_info(cliid: String, body: GolemRequestBody, ip: Option<IpAddr>) -> Option<NodeInfoOutput>
+// but, tests are written in a way that makes refactoring this difficult
+// TODO refactor this after tests will be executed differently
+fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
+    let GolemRequest { cliid, body, .. } = envelope.data;
 
     let timestamp = now_in_millis();
 
@@ -554,7 +560,7 @@ impl Handler<()> for UpdateHandler {
                             Ok(extra) => push_p2pstats(cliid, &updater, extra),
                             Err(e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
                         }
-                    _ => match to_node_info(cliid, body, client_ip) {
+                    _ => match to_node_info(envelope, client_ip) {
                             Some(node_info) => push_node_info(&updater, &node_info),
                             None => Box::new(future::ok(HttpResponse::Ok().into()))
                         }
