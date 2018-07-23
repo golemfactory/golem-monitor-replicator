@@ -18,7 +18,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use updater::{UpdateKey, Updater};
+use updater::{UpdateRedis, Updater, UpdateMap, UpdateVal};
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -42,7 +42,7 @@ struct GolemRequest {
     body: GolemRequestBody,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(tag = "type")]
 enum GolemRequestBody {
     Login {
@@ -130,7 +130,7 @@ enum GolemRequestBody {
     },
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct Metadata {
     net: Option<String>,
     os: Option<String>,
@@ -142,7 +142,7 @@ struct Metadata {
     extra: HashMap<String, Value>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct Settings {
     start_port: Option<u16>,
     end_port: Option<u16>,
@@ -328,6 +328,11 @@ fn now_in_millis() -> u64 {
     secs * 1000 + millis
 }
 
+
+// The signature of this function should be
+// fn to_node_info(cliid: String, body: GolemRequestBody, ip: Option<IpAddr>) -> Option<NodeInfoOutput>
+// but, tests are written in a way that makes refactoring this difficult
+// TODO refactor this after tests will be executed differently
 fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<NodeInfoOutput> {
     let GolemRequest { cliid, body, .. } = envelope.data;
 
@@ -483,33 +488,54 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
     }
 }
 
-fn update_kv(
+fn push_node_info(
     updater: &Addr<Unsync, Updater>,
     node_info: &NodeInfoOutput,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
     debug!("nodeinfo {:?}", &node_info);
 
     if let Ok(map) = to_hash_map(&node_info) {
-        Box::new(
-            updater
-                .send(UpdateKey {
-                    key: node_info.cliid.clone(),
-                    value: map,
-                })
-                .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
-                .and_then(|r| match r {
-                    Ok(_v) => future::ok(HttpResponse::Ok().into()),
-                    Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
-                        "save: {}",
-                        e
-                    ))),
-                }),
-        )
+        let msg = UpdateRedis::UpdateRedisMap(UpdateMap {
+            collection: "nodeinfo".to_string(),
+            key: node_info.cliid.clone(),
+            value: map,
+        });
+        push_msg_to_redis(updater, msg)
     } else {
         Box::new(future::err(actix_web::error::ErrorInternalServerError(
             "gen node_info",
         )))
     }
+}
+
+fn push_p2pstats(
+    cliid: String,
+    updater: &Addr<Unsync, Updater>,
+    value: String,
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    debug!("p2pstats {:?}", &value);
+    let msg = UpdateRedis::UpdateRedisVal(UpdateVal {
+        collection: "p2pstats".to_string(),
+        key: cliid.to_string(),
+        value: value.to_string(),
+    });
+
+    push_msg_to_redis(updater, msg)
+}
+
+fn push_msg_to_redis(
+    updater: &Addr<Unsync, Updater>,
+    update_msg: UpdateRedis
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    Box::new(updater.send(update_msg)
+            .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
+            .and_then(|r| match r {
+              Ok(_v) => future::ok(HttpResponse::Ok().into()),
+              Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
+                  "save: {}",
+                  e
+              )))})
+    )
 }
 
 impl Handler<()> for UpdateHandler {
@@ -525,12 +551,24 @@ impl Handler<()> for UpdateHandler {
             info!("no client IP")
         }
 
-        req.json() // here json is converted to Envelope<StatsRequests>
+        req.json()
             .from_err()
-            .and_then(move |envelope| Ok(to_node_info(envelope, client_ip)))
-            .and_then(move |opt| match opt {
-                    Some(node_info) => update_kv(&updater, &node_info),
-                    None => Box::new(future::ok(HttpResponse::Ok().into()))
+            .and_then(move |envelope: Envelope<GolemRequest>| {
+
+                if let GolemRequest { cliid, body: GolemRequestBody::P2PSnapshot { extra }, .. } = envelope.data {
+                    match serde_json::to_string(&extra) {
+                        Ok(extra) => push_p2pstats(cliid, &updater, extra),
+                        Err(_e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
+                    }
+                }
+                else {
+                    match to_node_info(envelope, client_ip) {
+                        Some(node_info) => push_node_info(&updater, &node_info),
+                        None => Box::new(future::ok(HttpResponse::Ok().into()))
+                    }
+                }
+
+
             }).or_else(|e : actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
