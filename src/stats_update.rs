@@ -554,17 +554,21 @@ impl Handler<()> for UpdateHandler {
         req.json()
             .from_err()
             .and_then(move |envelope: Envelope<GolemRequest>| {
-                let GolemRequest { cliid, body, .. } = envelope.data;
-                match body {
-                    GolemRequestBody::P2PSnapshot { extra } => match serde_json::to_string(&extra) {
-                            Ok(extra) => push_p2pstats(cliid, &updater, extra),
-                            Err(e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
-                        }
-                    _ => match to_node_info(envelope, client_ip) {
-                            Some(node_info) => push_node_info(&updater, &node_info),
-                            None => Box::new(future::ok(HttpResponse::Ok().into()))
-                        }
+
+                if let GolemRequest { cliid, body: GolemRequestBody::P2PSnapshot { extra }, .. } = envelope.data {
+                    match serde_json::to_string(&extra) {
+                        Ok(extra) => push_p2pstats(cliid, &updater, extra),
+                        Err(_e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
+                    }
                 }
+                else {
+                    match to_node_info(envelope, client_ip) {
+                        Some(node_info) => push_node_info(&updater, &node_info),
+                        None => Box::new(future::ok(HttpResponse::Ok().into()))
+                    }
+                }
+
+
             }).or_else(|e : actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
