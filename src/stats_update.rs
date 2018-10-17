@@ -137,7 +137,9 @@ struct Metadata {
     #[serde(deserialize_with = "string_or_struct")]
     settings: Settings,
     #[serde(deserialize_with = "string_or_struct")]
+    #[serde(default)]
     os_info: OSInfo,
+    os: Option<String>,  // Backwards-compatibility
 
     #[serde(flatten)]
     extra: HashMap<String, Value>,
@@ -170,7 +172,7 @@ impl FromStr for Settings {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 struct OSInfo {
     platform: Option<String>,
     system: Option<String>,
@@ -187,8 +189,12 @@ impl FromStr for OSInfo {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
-        let env: ObjectEnvelope<OSInfo> = serde_json::from_str(s)?;
-        Ok(env.obj)
+        if s.is_empty() {
+            Ok(OSInfo::default())
+        } else {
+            let env: ObjectEnvelope<OSInfo> = serde_json::from_str(s)?;
+            Ok(env.obj)
+        }
     }
 }
 
@@ -283,7 +289,7 @@ struct MetadataOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     num_cores: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    os_platform: Option<String>,
+    os: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     os_system: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -402,7 +408,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     max_resource_size: m.settings.max_resource_size.map(|f| f.trunc() as u64),
                     node_name: m.settings.node_name,
                     num_cores: m.settings.num_cores,
-                    os_platform: m.os_info.platform,
+                    os: m.os_info.platform.or(m.os),
                     os_system: m.os_info.system,
                     os_release: m.os_info.release,
                     os_version: m.os_info.version,
@@ -647,6 +653,12 @@ mod tests {
             "pretty json {}",
             serde_json::to_string_pretty(&output.unwrap()).unwrap()
         );
+    }
+
+    #[test]
+    fn parse_login_legacy() {
+        let input = include_str!("../test/login-legacy.json");
+        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
     }
 
     #[test]
