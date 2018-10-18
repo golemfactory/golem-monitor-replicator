@@ -133,10 +133,13 @@ enum GolemRequestBody {
 #[derive(Deserialize, Serialize, Debug)]
 struct Metadata {
     net: Option<String>,
-    os: Option<String>,
     version: Option<String>,
     #[serde(deserialize_with = "string_or_struct")]
     settings: Settings,
+    #[serde(deserialize_with = "string_or_struct")]
+    #[serde(default)]
+    os_info: OSInfo,
+    os: Option<String>,  // Backwards-compatibility
 
     #[serde(flatten)]
     extra: HashMap<String, Value>,
@@ -166,6 +169,32 @@ impl FromStr for Settings {
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
         let env: ObjectEnvelope<Settings> = serde_json::from_str(s)?;
         Ok(env.obj)
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+struct OSInfo {
+    platform: Option<String>,
+    system: Option<String>,
+    release: Option<String>,
+    version: Option<String>,
+    windows_edition: Option<String>,
+    linux_distribution: Option<[String; 3]>,
+
+    #[serde(flatten)]
+    extra: HashMap<String, Value>,
+}
+
+impl FromStr for OSInfo {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
+        if s.is_empty() {
+            Ok(OSInfo::default())
+        } else {
+            let env: ObjectEnvelope<OSInfo> = serde_json::from_str(s)?;
+            Ok(env.obj)
+        }
     }
 }
 
@@ -236,8 +265,6 @@ struct MetadataOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     net: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    os: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     start_port: Option<u16>,
@@ -261,6 +288,18 @@ struct MetadataOutput {
     node_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     num_cores: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_release: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_windows_edition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_linux_distribution: Option<String>,
 }
 
 #[derive(Serialize, Debug, Default)]
@@ -357,7 +396,6 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             metadata: metadata
                 .map(|m| MetadataOutput {
                     net: m.net,
-                    os: m.os,
                     version: m.version,
                     start_port: m.settings.start_port,
                     end_port: m.settings.end_port,
@@ -370,6 +408,15 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     max_resource_size: m.settings.max_resource_size.map(|f| f.trunc() as u64),
                     node_name: m.settings.node_name,
                     num_cores: m.settings.num_cores,
+                    os: m.os_info.platform.or(m.os),
+                    os_system: m.os_info.system,
+                    os_release: m.os_info.release,
+                    os_version: m.os_info.version,
+                    os_windows_edition: m.os_info.windows_edition,
+                    os_linux_distribution: match m.os_info.linux_distribution {
+                        Some(x) => Some(x.join(" ")),
+                        None => None
+                    }
                 })
                 .unwrap_or(MetadataOutput::default()),
         }),
@@ -606,6 +653,12 @@ mod tests {
             "pretty json {}",
             serde_json::to_string_pretty(&output.unwrap()).unwrap()
         );
+    }
+
+    #[test]
+    fn parse_login_legacy() {
+        let input = include_str!("../test/login-legacy.json");
+        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
     }
 
     #[test]
