@@ -2,7 +2,9 @@
 
 Golem Monitor Replicator accepts json messages from golem nodes, parses them and puts data into redis.
 
-By default it listens on `0.0.0.0:8081` with `/update` route.
+By default it:
+* listens on `0.0.0.0:8081` with `/update` route
+* writes to a local redis instance at `127.0.0.1:6379`
 
 It also support `/ping-me` route but it is disabled by default.
 
