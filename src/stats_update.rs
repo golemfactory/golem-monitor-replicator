@@ -709,23 +709,3 @@ mod tests {
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
 }
-
-// Integration test - run it from terminal ;)
-// curl \
-//     --header "Content-Type: application/json" \
-//     --request POST \
-//     --data '{"proto_ver": 2,
-//              "data": {
-//                   "known_tasks": 0,
-//                   "supported_tasks": 2721,
-//                   "computed_tasks": 0,
-//                   "tasks_with_errors": 0,
-//                   "tasks_with_timeout": 0,
-//                   "tasks_requested": 314,
-//                   "sessid": "5bbeefa5-423e-425c-92dd-bde94e2c9777",
-//                   "cliid": "some-fake-cliid",
-//                   "timestamp": 1,
-//                   "type": "Stats"
-//             }
-//         }' \
-//     http://localhost:8081
