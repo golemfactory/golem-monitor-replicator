@@ -51,6 +51,7 @@ enum GolemRequestBody {
         #[serde(default)]
         protocol_versions: HashMap<String, Value>,
         sessid: Option<String>,
+        nvgpu: Option<NVGPU>,
 
         #[serde(flatten)]
         extra: HashMap<String, Value>,
@@ -143,6 +144,11 @@ struct Metadata {
 
     #[serde(flatten)]
     extra: HashMap<String, Value>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+struct NVGPU {
+    is_supported: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -257,6 +263,8 @@ struct NodeInfoOutput {
     #[serde(flatten)]
     requestor_stats: RequestorStatsOutput,
     #[serde(flatten)]
+    nvgpu: NVGPUOutput,
+    #[serde(flatten)]
     extra: HashMap<String, Value>,
 }
 
@@ -352,6 +360,13 @@ struct RequestorStatsOutput {
     rs_failed_total_time: Option<f64>,
 }
 
+#[derive(Serialize, Debug, Default)]
+struct NVGPUOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvgpu_is_supported: Option<bool>,
+}
+
+
 fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashMap<String, Value> {
     protocol_versions
         .iter()
@@ -384,6 +399,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             metadata,
             protocol_versions,
             sessid,
+            nvgpu,
             ..
         } => Some(NodeInfoOutput {
             cliid,
@@ -393,6 +409,10 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             extra: protocol_versions_to_map(&protocol_versions),
             stats: StatsOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
+            nvgpu: match nvgpu {
+                None => {debug!("nvgpu is None"); NVGPUOutput::default()},
+                Some(nvgpu) => {debug!("some nvgpu: {:?}", nvgpu); NVGPUOutput{nvgpu_is_supported: Some(nvgpu.is_supported)}},
+            },
             metadata: metadata
                 .map(|m| MetadataOutput {
                     net: m.net,
@@ -416,7 +436,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     os_linux_distribution: match m.os_info.linux_distribution {
                         Some(x) => Some(x.join(" ")),
                         None => None
-                    }
+                    },
                 })
                 .unwrap_or(MetadataOutput::default()),
         }),
@@ -443,6 +463,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             ip,
             timestamp,
             metadata: MetadataOutput::default(),
+            nvgpu: NVGPUOutput::default(),
             extra: HashMap::new(),
             stats: StatsOutput::default(),
             requestor_stats: RequestorStatsOutput {
@@ -477,6 +498,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             ip,
             timestamp,
             metadata: MetadataOutput::default(),
+            nvgpu: NVGPUOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
             extra: HashMap::default(),
             stats: StatsOutput {
@@ -648,11 +670,25 @@ mod tests {
             assert_eq!(&settings.extra["use_ipv6"], &json!(0));
         }
 
-        let output = to_node_info(r, None);
+        let output = to_node_info(r, None).unwrap();
         println!(
             "pretty json {}",
-            serde_json::to_string_pretty(&output.unwrap()).unwrap()
+            serde_json::to_string_pretty(&output).unwrap()
         );
+        assert_eq!(&output.nvgpu.nvgpu_is_supported, &None);
+    }
+
+    #[test]
+    fn parse_login_nvgpu() {
+        let input = include_str!("../test/login-nvgpu.json");
+
+        let r: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+        let output = to_node_info(r, None).unwrap();
+        println!(
+            "pretty json {}",
+            serde_json::to_string_pretty(&output).unwrap()
+        );
+        assert_eq!(&output.nvgpu.nvgpu_is_supported.unwrap(), &true);
     }
 
     #[test]
