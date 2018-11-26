@@ -29,7 +29,16 @@ Please install it locally when you're planning to contribute:
 1. `git journal setup`
 
 ### versioning
-To bump version we are using `cargo release minor`.
+ 
+To bump version we are using [`cargo release minor`](https://github.com/sunng87/cargo-release) or `... patch`.
+
+Use `cargo install cargo-release` to get this tool.
+
+### building
+
+To build and release `.deb` package use [`cargo deb`](https://github.com/mmstick/cargo-deb) 
+
+Use `cargo install cargo-deb` to get it.
 
 ### local e2e test
 1. make sure local redis server is running
