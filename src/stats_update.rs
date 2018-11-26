@@ -410,8 +410,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             stats: StatsOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
             nvgpu: match nvgpu {
-                None => {debug!("nvgpu is None"); NVGPUOutput::default()},
-                Some(nvgpu) => {debug!("some nvgpu: {:?}", nvgpu); NVGPUOutput{nvgpu_is_supported: Some(nvgpu.is_supported)}},
+                None => NVGPUOutput::default(),
+                Some(nvgpu) => NVGPUOutput{ nvgpu_is_supported: Some(nvgpu.is_supported) },
             },
             metadata: metadata
                 .map(|m| MetadataOutput {
@@ -675,7 +675,7 @@ mod tests {
             "pretty json {}",
             serde_json::to_string_pretty(&output).unwrap()
         );
-        assert_eq!(&output.nvgpu.nvgpu_is_supported, &None);
+        assert_eq!(output.nvgpu.nvgpu_is_supported, None);
     }
 
     #[test]
@@ -688,7 +688,7 @@ mod tests {
             "pretty json {}",
             serde_json::to_string_pretty(&output).unwrap()
         );
-        assert_eq!(&output.nvgpu.nvgpu_is_supported.unwrap(), &true);
+        assert_eq!(output.nvgpu.nvgpu_is_supported.unwrap(), true);
     }
 
     #[test]
