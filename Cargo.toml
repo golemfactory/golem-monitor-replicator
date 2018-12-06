@@ -29,6 +29,7 @@ nom="3.2"
 default = ["stats_update"]
 pingme = []
 stats_update = []
+export_csv = []
 
 [profile.release]
 lto = true

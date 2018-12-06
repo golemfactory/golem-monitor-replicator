@@ -39,6 +39,9 @@ extern crate nom;
 #[cfg(feature = "pingme")]
 mod pingme;
 
+#[cfg(feature = "export_csv")]
+mod export_csv;
+
 pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
     use std::str::FromStr;
 
@@ -68,6 +71,17 @@ impl MonitorSettings {
 
         config.try_into()
     }
+}
+
+#[cfg(feature = "export_csv")]
+fn route_export_csv(app: App) -> App {
+    info!("mounting csv export (/dump)");
+    app.route("/dump", http::Method::GET, export_csv::export_csv)
+}
+
+#[cfg(not(feature = "export_csv"))]
+fn route_export_csv(app: App) -> App {
+    app
 }
 
 #[cfg(feature = "pingme")]
@@ -132,6 +146,7 @@ fn main() {
         App::new()
             .middleware(actix_web::middleware::Logger::default())
             .configure(route_pingme)
+            .configure(route_export_csv)
             .configure(route_stats_update(redis_address.clone()))
     }).bind(address)
         .unwrap()
