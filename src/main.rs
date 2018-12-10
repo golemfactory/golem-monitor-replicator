@@ -74,14 +74,19 @@ impl MonitorSettings {
 }
 
 #[cfg(feature = "export_csv")]
-fn route_export_csv(app: App) -> App {
+fn route_export_csv(redis_address: String) -> impl Fn(App) -> App {
     info!("mounting csv export (/dump)");
-    app.route("/dump", http::Method::GET, export_csv::export_csv)
+    move |app: App| {
+        use actix_redis::RedisActor;
+        let redis_actor = RedisActor::start(redis_address.clone());
+        let exporter = export_csv::ExportCSVHandler::new(redis_actor);
+        app.resource("/dump", |r| r.method(http::Method::GET).h(exporter))
+    }
 }
 
 #[cfg(not(feature = "export_csv"))]
-fn route_export_csv(app: App) -> App {
-    app
+fn route_export_csv(_: String) -> impl Fn(App) -> App {
+    |app| app
 }
 
 #[cfg(feature = "pingme")]
@@ -113,7 +118,8 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
                     .finish()
             });
             r.method(http::Method::POST).h(update_handler_root)
-        }).resource("/update", |r| {
+        })
+        .resource("/update", |r| {
             r.method(http::Method::POST).h(update_handler_update)
         })
     }
@@ -146,11 +152,12 @@ fn main() {
         App::new()
             .middleware(actix_web::middleware::Logger::default())
             .configure(route_pingme)
-            .configure(route_export_csv)
+            .configure(route_export_csv(redis_address.clone()))
             .configure(route_stats_update(redis_address.clone()))
-    }).bind(address)
-        .unwrap()
-        .start();
+    })
+    .bind(address)
+    .unwrap()
+    .start();
 
     let _ = sys.run();
 }
