@@ -26,10 +26,10 @@ bytes="0.4"
 nom="3.2"
 
 [features]
-default = ["stats_update", "export_csv"]
+default = ["stats_update", "list_nodes"]
 pingme = []
 stats_update = []
-export_csv = []
+list_nodes = []
 
 [profile.release]
 lto = true

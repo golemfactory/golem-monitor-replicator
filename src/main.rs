@@ -39,8 +39,8 @@ extern crate nom;
 #[cfg(feature = "pingme")]
 mod pingme;
 
-#[cfg(feature = "export_csv")]
-mod export_csv;
+#[cfg(feature = "list_nodes")]
+mod list_nodes;
 
 pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
     use std::str::FromStr;
@@ -73,19 +73,24 @@ impl MonitorSettings {
     }
 }
 
-#[cfg(feature = "export_csv")]
-fn route_export_csv(redis_address: String) -> impl Fn(App) -> App {
-    info!("mounting csv export (/dump)");
+#[cfg(feature = "list_nodes")]
+fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
+    info!("mounting /dump");
     move |app: App| {
         use actix_redis::RedisActor;
         let redis_actor = RedisActor::start(redis_address.clone());
-        let exporter = export_csv::ExportCSVHandler::new(redis_actor);
-        app.resource("/dump", |r| r.method(http::Method::GET).h(exporter))
+        app.resource("/dump", |r| {
+            r.method(http::Method::GET)
+                .h(list_nodes::ListNodesHandler::new(
+                    redis_actor,
+                    list_nodes::ListType::ExportCSV,
+                ))
+        })
     }
 }
 
-#[cfg(not(feature = "export_csv"))]
-fn route_export_csv(_: String) -> impl Fn(App) -> App {
+#[cfg(not(feature = "list_nodes"))]
+fn route_list_nodes(_: String) -> impl Fn(App) -> App {
     |app| app
 }
 
@@ -152,7 +157,7 @@ fn main() {
         App::new()
             .middleware(actix_web::middleware::Logger::default())
             .configure(route_pingme)
-            .configure(route_export_csv(redis_address.clone()))
+            .configure(route_list_nodes(redis_address.clone()))
             .configure(route_stats_update(redis_address.clone()))
     })
     .bind(address)
