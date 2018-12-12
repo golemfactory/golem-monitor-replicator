@@ -98,7 +98,9 @@ fn extract_node(
                         it
                     })*/
                     .map(|two_elems| match two_elems {
-                        &[ref key, ref val] => Ok((extract_string(key.clone())?, extract_string(val.clone())?)),
+                        &[ref key, ref val] => {
+                            Ok((extract_string(key.clone())?, extract_string(val.clone())?))
+                        }
                         _ => Err(actix_web::error::ErrorInternalServerError(
                             "invalid redis response",
                         )),
@@ -122,10 +124,14 @@ impl Handler<()> for ListNodesHandler {
             future::join_all(
                 nodes
                     .into_iter()
-                    .map(|node_id| extract_node(redis_actor.clone(), format!("nodeinfo.{}", node_id)))
+                    .map(|node_id| {
+                        extract_node(redis_actor.clone(), format!("nodeinfo.{}", node_id))
+                    })
                     .collect::<Vec<_>>(),
             )
-            .and_then(|results| future::ok(HttpResponse::build(StatusCode::OK).body(format!("{:?}", results))))
+            .and_then(|results| {
+                future::ok(HttpResponse::build(StatusCode::OK).body(format!("{:?}", results)))
+            })
         }))
     }
 }

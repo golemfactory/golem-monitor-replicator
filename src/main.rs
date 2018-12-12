@@ -39,6 +39,8 @@ extern crate nom;
 #[cfg(feature = "pingme")]
 mod pingme;
 
+mod redis_tools;
+
 #[cfg(feature = "list_nodes")]
 mod list_nodes;
 
