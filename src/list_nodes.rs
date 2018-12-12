@@ -93,10 +93,10 @@ fn extract_node(
             let resp_arr: Result<HashMap<String, String>, _> = match result {
                 Ok(RespValue::Array(keys_values)) => keys_values
                     .chunks(2)
-                    .map(|it| {
+                    /*.map(|it| {
                         println!("{:?}", it);
                         it
-                    })
+                    })*/
                     .map(|two_elems| match two_elems {
                         &[ref key, ref val] => Ok((extract_string(key.clone())?, extract_string(val.clone())?)),
                         _ => Err(actix_web::error::ErrorInternalServerError(
