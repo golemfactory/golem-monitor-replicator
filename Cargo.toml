@@ -15,7 +15,7 @@ serde_json="1.0"
 futures="0.1"
 failure="0.1"
 tokio-core="0.1"
-redis-async = "0.0.7"
+redis-async = "0.0"
 
 log = "0.4"
 env_logger = "0.5"
@@ -28,8 +28,10 @@ nom="3.2"
 [features]
 default = ["stats_update", "list_nodes"]
 pingme = []
-stats_update = []
-list_nodes = []
+stats_update = ['redis']
+list_nodes = ['redis']
+
+redis=[]
 
 [profile.release]
 lto = true

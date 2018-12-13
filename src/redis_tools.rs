@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use actix_redis::{Command, RedisActor, RespError, RespValue};
 use futures::prelude::*;
+use std::collections::HashMap;
 
 pub trait RespValueExt: Sized {
     type Error;
@@ -50,9 +51,7 @@ impl RespValueExt for RespValue {
     }
 }
 
-
 pub trait AsRedisHandle {
-
     fn as_redis_handle(&self) -> RedisHandle<'_>;
 }
 
@@ -61,11 +60,8 @@ pub struct RedisHandle<'a> {
 }
 
 impl AsRedisHandle for Addr<Unsync, RedisActor> {
-
     fn as_redis_handle(&self) -> RedisHandle<'_> {
-        RedisHandle {
-            actor: self
-        }
+        RedisHandle { actor: self }
     }
 }
 
@@ -74,44 +70,86 @@ impl<'a> RedisHandle<'a> {
         &self,
         pattern: String,
         count: usize,
+    ) -> impl Stream<Item = Vec<String>, Error = actix_redis::RespError> {
+        let actor = self.actor.clone();
+
+        scan_with_query(move |cursor| {
+            actor.send(Command(resp_array![
+                "SCAN",
+                cursor.to_string(),
+                "MATCH",
+                pattern.clone(),
+                "COUNT",
+                count.to_string()
+            ]))
+        })
+    }
+
+    pub fn scan_set(
+        &self,
+        set_key: String,
+        count: usize,
     ) -> impl Stream<Item = Vec<String>, Error = RespError> {
         let actor = self.actor.clone();
-        ScanStream::new(move |cursor| {
-            actor
-                .send(Command(resp_array![
-                    "SCAN",
-                    cursor.to_string(),
-                    "MATCH",
-                    pattern.clone(),
-                    "COUNT",
-                    count.to_string()
-                ]))
-                .map_err(|e| RespError::Internal("mailbox".into()))
-                .and_then(|result| match result {
-                    Ok(val) => {
-                        let (cursor_val, data_val) = val.into_pair()?;
-
-                        Ok((
-                            cursor_val
-                                .into_string()?
-                                .parse::<u64>()
-                                .map_err(|e| RespError::Unexpected(Box::new(e)))?,
-                            data_val
-                                .into_vec()?
-                                .into_iter()
-                                .map(|v| v.into_string())
-                                .collect::<Result<Vec<String>, RespError>>()?,
-                        ))
-                    }
-                    Err(e) => Err(RespError::Internal(format!("{}", e))),
-                })
+        scan_with_query(move |cursor| {
+            actor.send(Command(resp_array![
+                "SSCAN",
+                set_key.to_string(),
+                cursor.to_string(),
+                "COUNT",
+                count.to_string()
+            ]))
         })
+    }
+
+    pub fn get_hash(&self, key : String) -> impl Future<Item=HashMap<String, String>, Error=RespError> {
+        self.actor.send(Command(resp_array!["HGETALL", key]))
+            .map_err(|e| RespError::Internal("mailbox".into()))
+            .and_then(|r| {
+                r.map_err(|e| RespError::Internal(format!("{}", e)))?.into_vec()?
+                    .chunks(2)
+                    .map(|chunk| match chunk {
+                        &[ref key, ref val] => Ok((key.clone().into_string()?, val.clone().into_string()?)),
+                        _ => Err(RespError::Internal("pair expected".into()))
+                    }).collect::<Result<HashMap<String, String>, _>>()
+            })
     }
 }
 
 struct ScanStream<Fetch, FetchFut> {
     fut: Option<FetchFut>,
     poll_fn: Fetch,
+}
+
+fn scan_with_query<QueryBuilder, QueryBuilderResult>(
+    builder: QueryBuilder,
+) -> impl Stream<Item = Vec<String>, Error = RespError>
+where
+    QueryBuilder: Fn(u64) -> QueryBuilderResult,
+    QueryBuilderResult: Future<Item = Result<RespValue, actix_redis::Error>, Error = MailboxError>,
+{
+    ScanStream::new(move |cursor| {
+        builder(cursor)
+            .map_err(|e| RespError::Internal("mailbox".into()))
+            .and_then(|result| match result {
+                Ok(val) => {
+                    let (cursor_val, data_val) = val.into_pair()?;
+
+                    Ok::<_, RespError>((
+                        cursor_val
+                            .into_string()?
+                            .parse::<u64>()
+                            .map_err(|e| RespError::Unexpected(Box::new(e)))?,
+                        data_val
+                            .into_vec()?
+                            .into_iter()
+                            .map(|v| v.into_string())
+                            .collect::<Result<Vec<String>, RespError>>()?,
+                    ))
+                }
+                Err(e) => Err(RespError::Internal(format!("{}", e))),
+            })
+    })
 }
 
 impl<Fetch, FetchFut> Stream for ScanStream<Fetch, FetchFut>
@@ -156,10 +194,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use futures::prelude::*;
-    use actix::fut;
     use super::*;
-
+    use actix::fut;
+    use futures::prelude::*;
 
     //#[test]
     fn test() {
@@ -169,14 +206,31 @@ mod test {
 
         eprintln!("starting");
         let _ = sys.run_until_complete(futures::future::lazy(|| {
-            actor.as_redis_handle().scan("nodeinfo.*".into(), 100).fold((), |_, it| {
-                eprintln!("start chunk");
-                for key in it {
-                    println!("\tk={}", key)
-                }
-                eprintln!("end chunk");
-                Ok::<(), RespError>(())
-            }).map_err(|_| ())
+
+            actor
+                .as_redis_handle()
+                .scan_set("active_nodes".into(), 20)
+                .map(move |data| {
+                    let ref2 = actor.clone();
+                    futures::future::join_all(
+                    data.into_iter().map(move |node_id| ref2.as_redis_handle().get_hash(format!("nodeinfo.{}", node_id)))
+                        .collect::<Vec<_>>()).into_stream()
+                })
+                .flatten()
+                .fold(0, |p, nodes| {
+                    eprintln!("start chunk");
+                    let n = p + nodes.len();
+
+                    for key in nodes {
+                        println!("\tk={:?}", key)
+                    }
+                    eprintln!("end chunk");
+                    Ok::<_, RespError>(n)
+                })
+                .and_then(|n| {
+                    Ok(eprintln!("total={}", n))
+                })
+                .map_err(|_| ())
         }));
     }
 

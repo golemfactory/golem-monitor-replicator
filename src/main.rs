@@ -25,8 +25,10 @@ use std::net::IpAddr;
 
 #[cfg_attr(feature = "stats_update", macro_use)]
 extern crate failure;
-#[cfg_attr(feature = "stats_update", macro_use)]
+
+#[cfg_attr(feature = "redis", macro_use)]
 extern crate redis_async;
+
 #[cfg(feature = "stats_update")]
 mod stats_update;
 #[cfg(feature = "stats_update")]
@@ -39,6 +41,7 @@ extern crate nom;
 #[cfg(feature = "pingme")]
 mod pingme;
 
+#[cfg_attr(feature = "redis", macro_use)]
 mod redis_tools;
 
 #[cfg(feature = "list_nodes")]
