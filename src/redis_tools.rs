@@ -102,16 +102,24 @@ impl<'a> RedisHandle<'a> {
         })
     }
 
-    pub fn get_hash(&self, key : String) -> impl Future<Item=HashMap<String, String>, Error=RespError> {
-        self.actor.send(Command(resp_array!["HGETALL", key]))
+    pub fn get_hash(
+        &self,
+        key: String,
+    ) -> impl Future<Item = HashMap<String, String>, Error = RespError> {
+        self.actor
+            .send(Command(resp_array!["HGETALL", key]))
             .map_err(|e| RespError::Internal("mailbox".into()))
             .and_then(|r| {
-                r.map_err(|e| RespError::Internal(format!("{}", e)))?.into_vec()?
+                r.map_err(|e| RespError::Internal(format!("{}", e)))?
+                    .into_vec()?
                     .chunks(2)
                     .map(|chunk| match chunk {
-                        &[ref key, ref val] => Ok((key.clone().into_string()?, val.clone().into_string()?)),
-                        _ => Err(RespError::Internal("pair expected".into()))
-                    }).collect::<Result<HashMap<String, String>, _>>()
+                        &[ref key, ref val] => {
+                            Ok((key.clone().into_string()?, val.clone().into_string()?))
+                        }
+                        _ => Err(RespError::Internal("pair expected".into())),
+                    })
+                    .collect::<Result<HashMap<String, String>, _>>()
             })
     }
 }
@@ -206,15 +214,20 @@ mod test {
 
         eprintln!("starting");
         let _ = sys.run_until_complete(futures::future::lazy(|| {
-
             actor
                 .as_redis_handle()
                 .scan_set("active_nodes".into(), 20)
                 .map(move |data| {
                     let ref2 = actor.clone();
                     futures::future::join_all(
-                    data.into_iter().map(move |node_id| ref2.as_redis_handle().get_hash(format!("nodeinfo.{}", node_id)))
-                        .collect::<Vec<_>>()).into_stream()
+                        data.into_iter()
+                            .map(move |node_id| {
+                                ref2.as_redis_handle()
+                                    .get_hash(format!("nodeinfo.{}", node_id))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .into_stream()
                 })
                 .flatten()
                 .fold(0, |p, nodes| {
@@ -227,9 +240,7 @@ mod test {
                     eprintln!("end chunk");
                     Ok::<_, RespError>(n)
                 })
-                .and_then(|n| {
-                    Ok(eprintln!("total={}", n))
-                })
+                .and_then(|n| Ok(eprintln!("total={}", n)))
                 .map_err(|_| ())
         }));
     }

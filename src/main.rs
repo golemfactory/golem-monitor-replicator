@@ -23,6 +23,9 @@ use actix_web::{http, server, App, HttpMessage, HttpRequest, HttpResponse};
 use config::{Config, ConfigError, Environment, File};
 use std::net::IpAddr;
 
+#[cfg(feature = "list_nodes")]
+extern crate csv;
+
 #[cfg_attr(feature = "stats_update", macro_use)]
 extern crate failure;
 
