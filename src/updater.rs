@@ -54,8 +54,7 @@ impl Actor for Updater {
                 "CLIENT",
                 "SETNAME",
                 format!("monitor-thread-{:?}", ::std::thread::current().id())
-            ]))
-            .map(|_r| ())
+            ])).map(|_r| ())
             .map_err(|e| warn!("CLIENT SETNAME error {:?}", e))
             .into_actor(self)
             .wait(ctx);
@@ -121,13 +120,11 @@ impl Handler<UpdateRedis> for Updater {
             .send(match msg {
                 UpdateRedis::UpdateRedisMap(u) => to_hmset_command(u),
                 UpdateRedis::UpdateRedisVal(u) => to_set_command(u),
-            })
-            .into_actor(self)
+            }).into_actor(self)
             .map_err(|e, _, _| {
                 error!("update key error {:?}", &e);
                 e.into()
-            })
-            .map(|r, _, _| debug!("resp={:?}", r));
+            }).map(|r, _, _| debug!("resp={:?}", r));
 
         ActorResponse::async(f)
     }

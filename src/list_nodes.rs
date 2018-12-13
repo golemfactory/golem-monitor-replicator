@@ -1,4 +1,4 @@
-use actix::{fut::*, prelude::*};
+use actix::prelude::*;
 use actix_redis::{Command, RedisActor, RespValue};
 use actix_web::dev::Handler;
 use actix_web::{self, HttpRequest, HttpResponse};
@@ -80,8 +80,9 @@ static CSV_FIELDS: &[&str] = &[
     "rs_failed_total_time",
 ];
 
+#[derive(Copy, Clone)]
 pub enum ListType {
-    ExportCSV,
+    CSV,
     JSON,
 }
 
@@ -99,19 +100,18 @@ impl ListNodesHandler {
     }
 }
 
-impl Actor for ListNodesHandler {
-    type Context = Context<Self>;
-    /*fn started(&mut self, ctx: &mut Self::Context) {
-
-    }*/
-}
-
 impl ListNodesHandler {
     fn list_keys(&self) -> impl Future<Item = Vec<String>, Error = actix_web::Error> {
+        let list_type = self.list_type;
         self.redis_actor
-            .send(Command(resp_array!["KEYS", "nodeinfo.*"]))
+            .send(
+                match list_type {
+                    ListType::CSV => Command(resp_array!["KEYS", "nodeinfo.*"]),
+                    ListType::JSON => Command(resp_array!["SMEMBERS", "active_nodes"]),
+                }
+            )
             .map_err(|_e| actix_web::error::ErrorInternalServerError("Error sending KEYS command."))
-            .and_then(|response| {
+            .and_then(move |response| {
                 let answer = match response {
                     Ok(a) => a,
                     Err(e) => return future::err(actix_web::error::ErrorInternalServerError(e)),
@@ -127,7 +127,12 @@ impl ListNodesHandler {
                 let nodes: Result<Vec<String>, _> = all_nodes
                     .into_iter()
                     .map(|elem| match elem {
-                        RespValue::BulkString(vec8) => match std::str::from_utf8(&vec8[9..]) {
+                        RespValue::BulkString(vec8) => match std::str::from_utf8(
+                            match list_type {
+                                ListType::CSV => &vec8[9..],
+                                ListType::JSON => &vec8[0..],
+                            }
+                        ) {
                             Ok(str) => Ok(str.to_string()),
                             Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
                         },
@@ -173,12 +178,10 @@ fn extract_node(
                         _ => Err(actix_web::error::ErrorInternalServerError(
                             "invalid redis response",
                         )),
-                    })
-                    .chain(std::iter::once(Ok((
+                    }).chain(std::iter::once(Ok((
                         "node_id".to_string(),
                         String::from(&node_id[9..]),
-                    ))))
-                    .collect(),
+                    )))).collect(),
                 _ => Err(actix_web::error::ErrorInternalServerError(
                     "invalid redis response",
                 )),
@@ -192,41 +195,18 @@ impl Handler<()> for ListNodesHandler {
 
     fn handle(&mut self, _r: HttpRequest<()>) -> <Self as Handler<()>>::Result {
         let redis_actor = self.redis_actor.clone();
-
+        let list_type = self.list_type;
         Box::new(self.list_keys().and_then(move |nodes| {
             future::join_all(
                 nodes
                     .into_iter()
                     .map(|node_id| {
                         extract_node(redis_actor.clone(), format!("nodeinfo.{}", node_id))
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .and_then(|results| {
-                let mut csv_writer = csv::Writer::from_writer(vec![]);
-
-                match csv_writer.write_record(CSV_FIELDS) {
-                    Err(e) => {
-                        return future::err(actix_web::error::ErrorInternalServerError(
-                            e.to_string(),
-                        ))
-                    }
-                    _ => (),
-                }
-                for mut row in results {
-                    let csv_record = CSV_FIELDS.into_iter().map(|column_name| {
-                        match row.remove(map_csv_field(*column_name)) {
-                            Some(value) => {
-                                if *column_name == "ip" {
-                                    obfuscate_ip(value)
-                                } else {
-                                    value
-                                }
-                            }
-                            None => "".to_string(),
-                        }
-                    });
-                    match csv_writer.write_record(csv_record) {
+                    }).collect::<Vec<_>>(),
+            ).and_then(move |results| match list_type {
+                ListType::CSV => {
+                    let mut csv_writer = csv::Writer::from_writer(vec![]);
+                    match csv_writer.write_record(CSV_FIELDS) {
                         Err(e) => {
                             return future::err(actix_web::error::ErrorInternalServerError(
                                 e.to_string(),
@@ -234,23 +214,53 @@ impl Handler<()> for ListNodesHandler {
                         }
                         _ => (),
                     }
-                }
-                let body_text = match csv_writer.into_inner() {
-                    Ok(buf) => match String::from_utf8(buf) {
-                        Ok(str) => str,
+                    for mut row in results {
+                        let csv_record = CSV_FIELDS.into_iter().map(|column_name| {
+                            match row.remove(map_csv_field(*column_name)) {
+                                Some(value) => {
+                                    if *column_name == "ip" {
+                                        obfuscate_ip(value)
+                                    } else {
+                                        value
+                                    }
+                                }
+                                None => "".to_string(),
+                            }
+                        });
+                        match csv_writer.write_record(csv_record) {
+                            Err(e) => {
+                                return future::err(actix_web::error::ErrorInternalServerError(
+                                    e.to_string(),
+                                ))
+                            }
+                            _ => (),
+                        }
+                    }
+                    let body_text = match csv_writer.into_inner() {
+                        Ok(buf) => match String::from_utf8(buf) {
+                            Ok(str) => str,
+                            Err(e) => {
+                                return future::err(actix_web::error::ErrorInternalServerError(
+                                    e.to_string(),
+                                ))
+                            }
+                        },
                         Err(e) => {
                             return future::err(actix_web::error::ErrorInternalServerError(
                                 e.to_string(),
                             ))
                         }
-                    },
+                    };
+                    future::ok(HttpResponse::build(StatusCode::OK).body(body_text))
+                }
+                ListType::JSON => match serde_json::to_string(&results) {
+                    Ok(str) => future::ok(HttpResponse::build(StatusCode::OK).body(str)),
                     Err(e) => {
                         return future::err(actix_web::error::ErrorInternalServerError(
                             e.to_string(),
                         ))
                     }
-                };
-                future::ok(HttpResponse::build(StatusCode::OK).body(body_text))
+                },
             })
         }))
     }

@@ -118,8 +118,7 @@ impl<'a> RedisHandle<'a> {
                             Ok((key.clone().into_string()?, val.clone().into_string()?))
                         }
                         _ => Err(RespError::Internal("pair expected".into())),
-                    })
-                    .collect::<Result<HashMap<String, String>, _>>()
+                    }).collect::<Result<HashMap<String, String>, _>>()
             })
     }
 }
@@ -224,12 +223,9 @@ mod test {
                             .map(move |node_id| {
                                 ref2.as_redis_handle()
                                     .get_hash(format!("nodeinfo.{}", node_id))
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .into_stream()
-                })
-                .flatten()
+                            }).collect::<Vec<_>>(),
+                    ).into_stream()
+                }).flatten()
                 .fold(0, |p, nodes| {
                     eprintln!("start chunk");
                     let n = p + nodes.len();
@@ -239,8 +235,7 @@ mod test {
                     }
                     eprintln!("end chunk");
                     Ok::<_, RespError>(n)
-                })
-                .and_then(|n| Ok(eprintln!("total={}", n)))
+                }).and_then(|n| Ok(eprintln!("total={}", n)))
                 .map_err(|_| ())
         }));
     }

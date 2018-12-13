@@ -437,8 +437,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                         Some(x) => Some(x.join(" ")),
                         None => None,
                     },
-                })
-                .unwrap_or(MetadataOutput::default()),
+                }).unwrap_or(MetadataOutput::default()),
         }),
 
         GolemRequestBody::RequestorStats {
@@ -551,8 +550,7 @@ fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>
                 serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
                 serde_json::Value::Bool(b) => Some((k.clone(), format!("{}", b))),
                 _ => None,
-            })
-            .collect())
+            }).collect())
     } else {
         Err(ConvertError::InvalidJson)
     }
@@ -643,14 +641,12 @@ impl Handler<()> for UpdateHandler {
                         None => Box::new(future::ok(HttpResponse::Ok().into())),
                     }
                 }
-            })
-            .or_else(|e: actix_web::Error| {
+            }).or_else(|e: actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
                 resp.set_body(format!("{}", e));
                 future::ok(resp)
-            })
-            .responder()
+            }).responder()
     }
 }
 

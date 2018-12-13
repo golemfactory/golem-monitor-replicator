@@ -87,11 +87,18 @@ fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
     move |app: App| {
         use actix_redis::RedisActor;
         let redis_actor = RedisActor::start(redis_address.clone());
+        let redis_actor_copy = redis_actor.clone();
         app.resource("/dump", |r| {
             r.method(http::Method::GET)
                 .h(list_nodes::ListNodesHandler::new(
                     redis_actor,
-                    list_nodes::ListType::ExportCSV,
+                    list_nodes::ListType::CSV,
+                ))
+        }).resource("/json", move |r| {
+            r.method(http::Method::GET)
+                .h(list_nodes::ListNodesHandler::new(
+                    redis_actor_copy,
+                    list_nodes::ListType::JSON,
                 ))
         })
     }
@@ -131,8 +138,7 @@ fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
                     .finish()
             });
             r.method(http::Method::POST).h(update_handler_root)
-        })
-        .resource("/update", |r| {
+        }).resource("/update", |r| {
             r.method(http::Method::POST).h(update_handler_update)
         })
     }
@@ -167,8 +173,7 @@ fn main() {
             .configure(route_pingme)
             .configure(route_list_nodes(redis_address.clone()))
             .configure(route_stats_update(redis_address.clone()))
-    })
-    .bind(address)
+    }).bind(address)
     .unwrap()
     .start();
 
