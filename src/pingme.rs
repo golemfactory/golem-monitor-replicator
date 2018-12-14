@@ -70,7 +70,8 @@ fn ping_address(
                 is_open: true,
                 description: "open",
             })
-        }).or_else(move |_err| {
+        })
+        .or_else(move |_err| {
             Ok(PortStatus {
                 port,
                 is_open: false,
@@ -83,7 +84,8 @@ fn ping_address(
             .select(ping)
             .map_err(|(err, _next)| {
                 actix_web::error::ErrorInternalServerError(format!("io: {}", err))
-            }).and_then(|(result, _next)| future::ok(result)),
+            })
+            .and_then(|(result, _next)| future::ok(result)),
     )
 }
 
@@ -127,7 +129,8 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
             } else {
                 future::ok((b, ports))
             }
-        }).and_then(move |(b, ports): (PingMe, Vec<u16>)| {
+        })
+        .and_then(move |(b, ports): (PingMe, Vec<u16>)| {
             let timestamp = UNIX_EPOCH + Duration::from_millis((b.timestamp * 1000.0f64) as u64);
 
             let l: Box<Future<Item = Vec<PortStatus>, Error = actix_web::Error>> = match client_ip {
@@ -165,13 +168,15 @@ pub fn ping_me(r: HttpRequest) -> Box<Future<Item = HttpResponse, Error = actix_
 
                 Ok(HttpResponse::Ok().json(ping_me_result).into())
             })
-        }).or_else(|e: actix_web::Error| {
+        })
+        .or_else(|e: actix_web::Error| {
             debug!("Error {:?}", &e);
 
             let mut resp = e.as_response_error().error_response();
             resp.set_body(format!("{}", e));
             Ok(resp)
-        }).responder()
+        })
+        .responder()
 }
 
 fn parse_url_params(input: &[u8]) -> PingMe {

@@ -80,6 +80,35 @@ static CSV_FIELDS: &[&str] = &[
     "rs_failed_total_time",
 ];
 
+pub struct ListNodeStatsHandler {
+    redis_actor: Addr<Unsync, RedisActor>,
+}
+
+impl ListNodeStatsHandler {
+    pub fn new(redis_actor: Addr<Unsync, RedisActor>) -> ListNodeStatsHandler {
+        ListNodeStatsHandler { redis_actor }
+    }
+}
+
+impl Handler<()> for ListNodeStatsHandler {
+    type Result = Box<Future<Item = HttpResponse, Error = actix_web::Error>>;
+
+    fn handle(&mut self, _r: HttpRequest<()>) -> <Self as Handler<()>>::Result {
+        Box::new(
+            hashmap_from_redis(self.redis_actor.clone(), "aggregated").and_then(|stats| {
+                match serde_json::to_string(&stats) {
+                    Ok(str) => future::ok(HttpResponse::build(StatusCode::OK).body(str)),
+                    Err(e) => {
+                        return future::err(actix_web::error::ErrorInternalServerError(
+                            e.to_string(),
+                        ))
+                    }
+                }
+            }),
+        )
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum ListType {
     CSV,
@@ -104,13 +133,13 @@ impl ListNodesHandler {
     fn list_keys(&self) -> impl Future<Item = Vec<String>, Error = actix_web::Error> {
         let list_type = self.list_type;
         self.redis_actor
-            .send(
-                match list_type {
-                    ListType::CSV => Command(resp_array!["KEYS", "nodeinfo.*"]),
-                    ListType::JSON => Command(resp_array!["SMEMBERS", "active_nodes"]),
-                }
-            )
-            .map_err(|_e| actix_web::error::ErrorInternalServerError("Error sending KEYS command."))
+            .send(match list_type {
+                ListType::CSV => Command(resp_array!["KEYS", "nodeinfo.*"]),
+                ListType::JSON => Command(resp_array!["SMEMBERS", "active_nodes"]),
+            })
+            .map_err(|_e| {
+                actix_web::error::ErrorInternalServerError("Error sending Redis command.")
+            })
             .and_then(move |response| {
                 let answer = match response {
                     Ok(a) => a,
@@ -127,12 +156,10 @@ impl ListNodesHandler {
                 let nodes: Result<Vec<String>, _> = all_nodes
                     .into_iter()
                     .map(|elem| match elem {
-                        RespValue::BulkString(vec8) => match std::str::from_utf8(
-                            match list_type {
-                                ListType::CSV => &vec8[9..],
-                                ListType::JSON => &vec8[0..],
-                            }
-                        ) {
+                        RespValue::BulkString(vec8) => match std::str::from_utf8(match list_type {
+                            ListType::CSV => &vec8[9..],
+                            ListType::JSON => &vec8[0..],
+                        }) {
                             Ok(str) => Ok(str.to_string()),
                             Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
                         },
@@ -160,12 +187,12 @@ fn extract_string(resp_value: RespValue) -> Result<String, actix_web::Error> {
     }
 }
 
-fn extract_node(
+fn hashmap_from_redis<T: Into<String>>(
     redis_actor: Addr<Unsync, RedisActor>,
-    node_id: String,
+    node_id: T,
 ) -> impl Future<Item = HashMap<String, String>, Error = actix_web::Error> {
     redis_actor
-        .send(Command(resp_array!["HGETALL", node_id.clone()]))
+        .send(Command(resp_array!["HGETALL", node_id.into().clone()]))
         .map_err(|_| actix_web::error::ErrorInternalServerError("Error sending HGETALL command."))
         .and_then(move |result| {
             let resp_arr: Result<HashMap<String, String>, _> = match result {
@@ -178,10 +205,8 @@ fn extract_node(
                         _ => Err(actix_web::error::ErrorInternalServerError(
                             "invalid redis response",
                         )),
-                    }).chain(std::iter::once(Ok((
-                        "node_id".to_string(),
-                        String::from(&node_id[9..]),
-                    )))).collect(),
+                    })
+                    .collect(),
                 _ => Err(actix_web::error::ErrorInternalServerError(
                     "invalid redis response",
                 )),
@@ -201,9 +226,15 @@ impl Handler<()> for ListNodesHandler {
                 nodes
                     .into_iter()
                     .map(|node_id| {
-                        extract_node(redis_actor.clone(), format!("nodeinfo.{}", node_id))
-                    }).collect::<Vec<_>>(),
-            ).and_then(move |results| match list_type {
+                        hashmap_from_redis(redis_actor.clone(), format!("nodeinfo.{}", node_id))
+                            .map(move |mut hashmap| {
+                                hashmap.insert("node_id".to_string(), node_id.clone());
+                                hashmap
+                            })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .and_then(move |results| match list_type {
                 ListType::CSV => {
                     let mut csv_writer = csv::Writer::from_writer(vec![]);
                     match csv_writer.write_record(CSV_FIELDS) {
