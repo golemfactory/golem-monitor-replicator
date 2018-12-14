@@ -2,6 +2,7 @@ use actix::prelude::*;
 use actix_redis::{Command, RedisActor, RespError, RespValue};
 use futures::prelude::*;
 use std::collections::HashMap;
+use std::time::Duration;
 
 pub trait RespValueExt: Sized {
     type Error;
@@ -74,14 +75,16 @@ impl<'a> RedisHandle<'a> {
         let actor = self.actor.clone();
 
         scan_with_query(move |cursor| {
-            actor.send(Command(resp_array![
-                "SCAN",
-                cursor.to_string(),
-                "MATCH",
-                pattern.clone(),
-                "COUNT",
-                count.to_string()
-            ]))
+            actor
+                .send(Command(resp_array![
+                    "SCAN",
+                    cursor.to_string(),
+                    "MATCH",
+                    pattern.clone(),
+                    "COUNT",
+                    count.to_string()
+                ]))
+                .timeout(Duration::from_secs(2))
         })
     }
 
@@ -92,13 +95,15 @@ impl<'a> RedisHandle<'a> {
     ) -> impl Stream<Item = Vec<String>, Error = RespError> {
         let actor = self.actor.clone();
         scan_with_query(move |cursor| {
-            actor.send(Command(resp_array![
-                "SSCAN",
-                set_key.to_string(),
-                cursor.to_string(),
-                "COUNT",
-                count.to_string()
-            ]))
+            actor
+                .send(Command(resp_array![
+                    "SSCAN",
+                    set_key.to_string(),
+                    cursor.to_string(),
+                    "COUNT",
+                    count.to_string()
+                ]))
+                .timeout(Duration::from_secs(2))
         })
     }
 
@@ -108,6 +113,7 @@ impl<'a> RedisHandle<'a> {
     ) -> impl Future<Item = HashMap<String, String>, Error = RespError> {
         self.actor
             .send(Command(resp_array!["HGETALL", key]))
+            .timeout(Duration::from_secs(5))
             .map_err(|e| RespError::Internal("mailbox".into()))
             .and_then(|r| {
                 r.map_err(|e| RespError::Internal(format!("{}", e)))?

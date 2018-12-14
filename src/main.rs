@@ -23,6 +23,8 @@ use actix_web::{http, server, App, HttpMessage, HttpRequest, HttpResponse};
 use config::{Config, ConfigError, Environment, File};
 use std::net::IpAddr;
 
+extern crate bytes;
+
 #[cfg(feature = "list_nodes")]
 extern crate csv;
 
@@ -82,33 +84,7 @@ impl MonitorSettings {
 }
 
 #[cfg(feature = "list_nodes")]
-fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
-    info!("mounting /dump");
-    move |app: App| {
-        use actix_redis::RedisActor;
-        let redis_actor = RedisActor::start(redis_address.clone());
-        let redis_actor_json = redis_actor.clone();
-        let redis_actor_aggr = redis_actor.clone();
-        app.resource("/dump", |r| {
-            r.method(http::Method::GET)
-                .h(list_nodes::ListNodesHandler::new(
-                    redis_actor,
-                    list_nodes::ListType::CSV,
-                ))
-        })
-        .resource("/json", move |r| {
-            r.method(http::Method::GET)
-                .h(list_nodes::ListNodesHandler::new(
-                    redis_actor_json,
-                    list_nodes::ListType::JSON,
-                ))
-        })
-        .resource("/show/aggregates", move |r| {
-            r.method(http::Method::GET)
-                .h(list_nodes::ListNodeStatsHandler::new(redis_actor_aggr))
-        })
-    }
-}
+pub use list_nodes::route_list_nodes;
 
 #[cfg(not(feature = "list_nodes"))]
 fn route_list_nodes(_: String) -> impl Fn(App) -> App {
