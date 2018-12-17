@@ -26,7 +26,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                     .map(move |key_chunk| dump_csv_for_keys(&redis_iter, key_chunk))
                     .buffer_unordered(2);
 
-                let header = bytes::Bytes::from(CSV_FIELDS.join(","));
+                let header = bytes::Bytes::from(CSV_FIELDS.join(",") + "\n");
                 let cvs_framed_with_header = futures::stream::once(Ok(header)).chain(csv_framed);
 
                 Ok::<_, actix_web::Error>(
@@ -60,10 +60,6 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                                     redis
                                         .as_redis_handle()
                                         .get_hash(format!("nodeinfo.{}", node_id))
-                                        .and_then(move |mut node| {
-                                            node.insert("node_id".into(), node_id);
-                                            Ok(node)
-                                        })
                                         .map_err(|e| {
                                             actix_web::error::ErrorInternalServerError(
                                                 e.to_string(),
@@ -110,14 +106,9 @@ fn dump_csv_for_keys(
     future::join_all(
         keys.into_iter()
             .map(|key| {
-                let node_id = (&key[9..]).into();
                 redis
                     .as_redis_handle()
                     .get_hash(key)
-                    .and_then(move |mut node| {
-                        node.insert("node_id".into(), node_id);
-                        Ok(node)
-                    })
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
             })
             .collect::<Vec<_>>(),
