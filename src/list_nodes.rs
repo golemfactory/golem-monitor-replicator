@@ -1,6 +1,5 @@
 use actix::prelude::*;
-use actix_redis::{Command, RedisActor, RespValue};
-use actix_web::dev::Handler;
+use actix_redis::RedisActor;
 use actix_web::http::header::LastModified;
 use actix_web::{self, http, App, HttpRequest, HttpResponse};
 use futures::future;

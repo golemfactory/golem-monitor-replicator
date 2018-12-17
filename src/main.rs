@@ -1,53 +1,46 @@
 extern crate actix;
-extern crate actix_redis;
 extern crate actix_web;
-extern crate serde;
 
-extern crate url;
-
-#[cfg_attr(test, macro_use)]
-extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
 extern crate futures;
-
 extern crate tokio_core;
 
-extern crate env_logger;
+extern crate bytes;
+extern crate config;
+extern crate url;
+
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+#[cfg_attr(test, macro_use)]
+extern crate serde_json;
+
 #[macro_use]
 extern crate log;
-
-extern crate config;
+extern crate env_logger;
 
 use actix_web::{http, server, App, HttpMessage, HttpRequest, HttpResponse};
 use config::{Config, ConfigError, Environment, File};
 use std::net::IpAddr;
 
-extern crate bytes;
-
-#[cfg(feature = "list_nodes")]
-extern crate csv;
-
-#[cfg_attr(feature = "stats_update", macro_use)]
-extern crate failure;
+#[cfg(feature = "redis")]
+extern crate actix_redis;
 
 #[cfg_attr(feature = "redis", macro_use)]
 extern crate redis_async;
+
+#[cfg_attr(feature = "redis", macro_use)]
+mod redis_tools;
+
+#[cfg_attr(feature = "stats_update", macro_use)]
+extern crate failure;
 
 #[cfg(feature = "stats_update")]
 mod stats_update;
 #[cfg(feature = "stats_update")]
 mod updater;
 
-#[cfg(feature = "pingme")]
-extern crate bytes;
-#[cfg(feature = "pingme")]
-extern crate nom;
-#[cfg(feature = "pingme")]
-mod pingme;
-
-#[cfg_attr(feature = "redis", macro_use)]
-mod redis_tools;
+#[cfg(feature = "list_nodes")]
+extern crate csv;
 
 #[cfg(feature = "list_nodes")]
 mod list_nodes;
@@ -56,12 +49,16 @@ pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
     use std::str::FromStr;
 
     let forwarded_for: Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
+#[cfg(feature = "pingme")]
+extern crate nom;
 
     match forwarded_for {
         Some(ref v) => v.to_str().ok().and_then(|a| IpAddr::from_str(a).ok()),
         _ => r.peer_addr().map(|a| a.ip()),
     }
 }
+#[cfg(feature = "pingme")]
+mod pingme;
 
 #[derive(Debug, Deserialize)]
 struct MonitorSettings {
