@@ -59,7 +59,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                                 .map(move |node_id| {
                                     redis
                                         .as_redis_handle()
-                                        .get_hash(format!("nodeinfo.{}", node_id))
+                                        .get_hashmap(format!("nodeinfo.{}", node_id))
                                         .map_err(|e| {
                                             actix_web::error::ErrorInternalServerError(
                                                 e.to_string(),
@@ -108,7 +108,7 @@ fn dump_csv_for_keys(
             .map(|key| {
                 redis
                     .as_redis_handle()
-                    .get_hash(key)
+                    .get_hashmap(key)
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
             })
             .collect::<Vec<_>>(),
@@ -121,13 +121,10 @@ fn dump_csv_for_keys(
             csv_writer
                 .write_record(CSV_FIELDS.iter().map(|field_id| {
                     match node.remove(map_csv_field(*field_id)) {
-                        Some(value) => {
-                            if *field_id == "ip" {
-                                obfuscate_ip(value)
-                            } else {
-                                value
-                            }
-                        }
+                        Some(value) => match *field_id {
+                            "ip" => obfuscate_ip(value),
+                            _ => value,
+                        },
                         None => String::default(),
                     }
                 }))

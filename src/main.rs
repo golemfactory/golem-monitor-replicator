@@ -45,18 +45,9 @@ extern crate csv;
 #[cfg(feature = "list_nodes")]
 mod list_nodes;
 
-pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
-    use std::str::FromStr;
-
-    let forwarded_for: Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
 #[cfg(feature = "pingme")]
 extern crate nom;
 
-    match forwarded_for {
-        Some(ref v) => v.to_str().ok().and_then(|a| IpAddr::from_str(a).ok()),
-        _ => r.peer_addr().map(|a| a.ip()),
-    }
-}
 #[cfg(feature = "pingme")]
 mod pingme;
 
@@ -78,6 +69,38 @@ impl MonitorSettings {
 
         config.try_into()
     }
+}
+
+fn main() {
+    if ::std::env::var("RUST_LOG").is_err() {
+        ::std::env::set_var(
+            "RUST_LOG",
+            "actix_web=info,actix_redis=info,golem_monitor_rust=info",
+        )
+    }
+    env_logger::init();
+
+    let sys = actix::System::new("golem-monitor");
+
+    let MonitorSettings {
+        address,
+        redis_address,
+    } = MonitorSettings::load().unwrap();
+
+    info!("Starting server on {}", &address);
+
+    server::new(move || {
+        App::new()
+            .middleware(actix_web::middleware::Logger::default())
+            .configure(route_pingme)
+            .configure(route_list_nodes(redis_address.clone()))
+            .configure(route_stats_update(redis_address.clone()))
+    })
+    .bind(address)
+    .unwrap()
+    .start();
+
+    let _ = sys.run();
 }
 
 #[cfg(feature = "list_nodes")]
@@ -129,34 +152,13 @@ fn route_stats_update(_: String) -> impl Fn(App) -> App {
     |app| app
 }
 
-fn main() {
-    if ::std::env::var("RUST_LOG").is_err() {
-        ::std::env::set_var(
-            "RUST_LOG",
-            "actix_web=info,actix_redis=info,golem_monitor_rust=info",
-        )
+pub fn get_client_ip(r: &HttpRequest) -> Option<IpAddr> {
+    use std::str::FromStr;
+
+    let forwarded_for: Option<&http::header::HeaderValue> = r.headers().get("x-forwarded-for");
+
+    match forwarded_for {
+        Some(ref v) => v.to_str().ok().and_then(|a| IpAddr::from_str(a).ok()),
+        _ => r.peer_addr().map(|a| a.ip()),
     }
-    env_logger::init();
-
-    let sys = actix::System::new("golem-monitor");
-
-    let MonitorSettings {
-        address,
-        redis_address,
-    } = MonitorSettings::load().unwrap();
-
-    info!("Starting server on {}", &address);
-
-    server::new(move || {
-        App::new()
-            .middleware(actix_web::middleware::Logger::default())
-            .configure(route_pingme)
-            .configure(route_list_nodes(redis_address.clone()))
-            .configure(route_stats_update(redis_address.clone()))
-    })
-    .bind(address)
-    .unwrap()
-    .start();
-
-    let _ = sys.run();
 }

@@ -74,7 +74,7 @@ impl<'a> RedisHandle<'a> {
     ) -> impl Stream<Item = Vec<String>, Error = actix_redis::RespError> {
         let actor = self.actor.clone();
 
-        scan_with_query(move |cursor| {
+        scan(move |cursor| {
             actor
                 .send(Command(resp_array![
                     "SCAN",
@@ -94,7 +94,7 @@ impl<'a> RedisHandle<'a> {
         count: usize,
     ) -> impl Stream<Item = Vec<String>, Error = RespError> {
         let actor = self.actor.clone();
-        scan_with_query(move |cursor| {
+        scan(move |cursor| {
             actor
                 .send(Command(resp_array![
                     "SSCAN",
@@ -114,7 +114,7 @@ impl<'a> RedisHandle<'a> {
         })
     }
 
-    pub fn get_hash(
+    pub fn get_hashmap(
         &self,
         key: String,
     ) -> impl Future<Item = HashMap<String, String>, Error = RespError> {
@@ -137,17 +137,12 @@ impl<'a> RedisHandle<'a> {
     }
 }
 
-struct ScanStream<Fetch, FetchFut> {
-    fut: Option<FetchFut>,
-    poll_fn: Fetch,
-}
-
-fn scan_with_query<QueryBuilder, QueryBuilderResult>(
+fn scan<QueryBuilder, QueryResult>(
     builder: QueryBuilder,
 ) -> impl Stream<Item = Vec<String>, Error = RespError>
 where
-    QueryBuilder: Fn(u64) -> QueryBuilderResult,
-    QueryBuilderResult: Future<Item = Result<RespValue, actix_redis::Error>, Error = MailboxError>,
+    QueryBuilder: Fn(u64) -> QueryResult,
+    QueryResult: Future<Item = Result<RespValue, actix_redis::Error>, Error = MailboxError>,
 {
     ScanStream::new(move |cursor| {
         builder(cursor)
@@ -173,10 +168,29 @@ where
     })
 }
 
-impl<Fetch, FetchFut> Stream for ScanStream<Fetch, FetchFut>
+struct ScanStream<FutFn, Fut> {
+    fut_fn: FutFn,
+    fut: Option<Fut>,
+}
+
+impl<FutFn, Fut> ScanStream<FutFn, Fut>
 where
-    Fetch: Fn(u64) -> FetchFut,
-    FetchFut: Future<Item = (u64, Vec<String>), Error = RespError>,
+    FutFn: Fn(u64) -> Fut,
+    Fut: Future<Item = (u64, Vec<String>), Error = RespError>,
+{
+    fn new(poll_fn: FutFn) -> Self {
+        let fut = Some(poll_fn(0));
+        ScanStream {
+            fut,
+            fut_fn: poll_fn,
+        }
+    }
+}
+
+impl<FutFn, Fut> Stream for ScanStream<FutFn, Fut>
+where
+    FutFn: Fn(u64) -> Fut,
+    Fut: Future<Item = (u64, Vec<String>), Error = RespError>,
 {
     type Item = Vec<String>;
     type Error = RespError;
@@ -186,30 +200,19 @@ where
             match fut.poll() {
                 Ok(Async::NotReady) => {
                     self.fut = Some(fut);
-                    return Ok(Async::NotReady);
+                    Ok(Async::NotReady)
                 }
                 Ok(Async::Ready((cursor, data))) => {
                     if cursor != 0 {
-                        self.fut = Some((self.poll_fn)(cursor));
+                        self.fut = Some((self.fut_fn)(cursor));
                     }
-                    return Ok(Async::Ready(Some(data)));
+                    Ok(Async::Ready(Some(data)))
                 }
-                Err(e) => return Err(e),
+                Err(e) => Err(e),
             }
         } else {
-            return Ok(Async::Ready(None));
+            Ok(Async::Ready(None))
         }
-    }
-}
-
-impl<Fetch, FetchFut> ScanStream<Fetch, FetchFut>
-where
-    Fetch: Fn(u64) -> FetchFut,
-    FetchFut: Future<Item = (u64, Vec<String>), Error = RespError>,
-{
-    fn new(poll_fn: Fetch) -> Self {
-        let fut = Some(poll_fn(0));
-        ScanStream { fut, poll_fn }
     }
 }
 
@@ -236,7 +239,7 @@ mod test {
                         data.into_iter()
                             .map(move |node_id| {
                                 ref2.as_redis_handle()
-                                    .get_hash(format!("nodeinfo.{}", node_id))
+                                    .get_hashmap(format!("nodeinfo.{}", node_id))
                             })
                             .collect::<Vec<_>>(),
                     )
