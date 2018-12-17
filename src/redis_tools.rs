@@ -104,6 +104,13 @@ impl<'a> RedisHandle<'a> {
                     count.to_string()
                 ]))
                 .timeout(Duration::from_secs(2))
+                .map_err(|e| {
+                    match e {
+                        MailboxError::Timeout => error!("timeout on scan set"),
+                        MailboxError::Closed => error!("closed")
+                    }
+                    e
+                })
         })
     }
 
@@ -114,7 +121,7 @@ impl<'a> RedisHandle<'a> {
         self.actor
             .send(Command(resp_array!["HGETALL", key]))
             .timeout(Duration::from_secs(5))
-            .map_err(|e| RespError::Internal("mailbox".into()))
+            .map_err(|_e| RespError::Internal("mailbox".into()))
             .and_then(|r| {
                 r.map_err(|e| RespError::Internal(format!("{}", e)))?
                     .into_vec()?

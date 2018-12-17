@@ -5,7 +5,6 @@ use actix_web::http::header::LastModified;
 use actix_web::{self, http, App, HttpRequest, HttpResponse};
 use futures::future;
 use futures::prelude::*;
-use http::StatusCode;
 use redis_tools::*;
 use std::collections::HashMap;
 use std::time::SystemTime;
@@ -16,8 +15,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
         let redis_actor = RedisActor::start(redis_address.clone());
         let redis_actorx = redis_actor.clone();
         let redis_actorxj = redis_actor.clone();
-        let redis_actor_json = redis_actor.clone();
-        let redis_actor_aggr = redis_actor.clone();
+
         app.resource("/dump", move |r| {
             r.get().with(move |_: HttpRequest<_>| {
                 let redis_iter = redis_actor.clone();
@@ -78,7 +76,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                         )
                     })
                     .flatten()
-                    .buffer_unordered(50)
+                    .buffered(50)
                     .zip(futures::stream::iter_ok(0..))
                     .and_then(|(node, idx)| {
                         if idx == 0 {
@@ -104,18 +102,6 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                 )
             })
         })
-        .resource("/json", move |r| {
-            r.method(http::Method::GET)
-                .h(ListNodesHandler::new(redis_actor_json, ListType::JSON))
-        })
-        .resource("/dumpx", move |r| {
-            r.method(http::Method::GET)
-                .h(ListNodesHandler::new(redis_actorx, ListType::CSV))
-        })
-        .resource("/show/aggregates", move |r| {
-            r.method(http::Method::GET)
-                .h(ListNodeStatsHandler::new(redis_actor_aggr))
-        })
     }
 }
 
@@ -139,7 +125,7 @@ fn dump_csv_for_keys(
             .collect::<Vec<_>>(),
     )
     .and_then(|nodes: Vec<HashMap<String, String>>| {
-        let mut buf = Vec::with_capacity(10240);
+        let buf = Vec::with_capacity(10240);
 
         let mut csv_writer = csv::Writer::from_writer(buf);
         for mut node in nodes {
@@ -158,7 +144,7 @@ fn dump_csv_for_keys(
                 }))
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
         }
-        csv_writer.flush();
+        csv_writer.flush()?;
         Ok(csv_writer
             .into_inner()
             .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
@@ -239,219 +225,4 @@ static CSV_FIELDS: &[&str] = &[
     "rs_failed_total_time",
 ];
 
-pub struct ListNodeStatsHandler {
-    redis_actor: Addr<Unsync, RedisActor>,
-}
 
-impl ListNodeStatsHandler {
-    pub fn new(redis_actor: Addr<Unsync, RedisActor>) -> ListNodeStatsHandler {
-        ListNodeStatsHandler { redis_actor }
-    }
-}
-
-impl Handler<()> for ListNodeStatsHandler {
-    type Result = Box<Future<Item = HttpResponse, Error = actix_web::Error>>;
-
-    fn handle(&mut self, _r: HttpRequest<()>) -> <Self as Handler<()>>::Result {
-        Box::new(
-            hashmap_from_redis(self.redis_actor.clone(), "aggregated").and_then(|stats| {
-                match serde_json::to_string(&stats) {
-                    Ok(str) => future::ok(HttpResponse::build(StatusCode::OK).body(str)),
-                    Err(e) => {
-                        return future::err(actix_web::error::ErrorInternalServerError(
-                            e.to_string(),
-                        ))
-                    }
-                }
-            }),
-        )
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum ListType {
-    CSV,
-    JSON,
-}
-
-pub struct ListNodesHandler {
-    redis_actor: Addr<Unsync, RedisActor>,
-    list_type: ListType,
-}
-
-impl ListNodesHandler {
-    pub fn new(redis_actor: Addr<Unsync, RedisActor>, list_type: ListType) -> ListNodesHandler {
-        ListNodesHandler {
-            redis_actor,
-            list_type: list_type,
-        }
-    }
-}
-
-impl ListNodesHandler {
-    fn list_keys(&self) -> impl Future<Item = Vec<String>, Error = actix_web::Error> {
-        let list_type = self.list_type;
-        self.redis_actor
-            .send(match list_type {
-                ListType::CSV => Command(resp_array!["KEYS", "nodeinfo.*"]),
-                ListType::JSON => Command(resp_array!["SMEMBERS", "active_nodes"]),
-            })
-            .map_err(|_e| {
-                actix_web::error::ErrorInternalServerError("Error sending Redis command.")
-            })
-            .and_then(move |response| {
-                let answer = match response {
-                    Ok(a) => a,
-                    Err(e) => return future::err(actix_web::error::ErrorInternalServerError(e)),
-                };
-                let all_nodes = match answer {
-                    RespValue::Array(all_nodes) => all_nodes,
-                    _ => {
-                        return future::err(actix_web::error::ErrorInternalServerError(
-                            "invalid redis response",
-                        ))
-                    }
-                };
-                let nodes: Result<Vec<String>, _> = all_nodes
-                    .into_iter()
-                    .map(|elem| match elem {
-                        RespValue::BulkString(vec8) => match std::str::from_utf8(match list_type {
-                            ListType::CSV => &vec8[9..],
-                            ListType::JSON => &vec8[0..],
-                        }) {
-                            Ok(str) => Ok(str.to_string()),
-                            Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
-                        },
-                        _ => Err(actix_web::error::ErrorInternalServerError(
-                            "invalid redis response",
-                        )),
-                    })
-                    .collect();
-
-                future::result(nodes)
-            })
-    }
-}
-
-fn extract_string(resp_value: RespValue) -> Result<String, actix_web::Error> {
-    match resp_value {
-        RespValue::BulkString(vec8) => match std::str::from_utf8(vec8.as_ref()) {
-            Ok(str) => Ok(str.to_string()),
-            Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
-        },
-        RespValue::SimpleString(str) => Ok(str),
-        _ => Err(actix_web::error::ErrorInternalServerError(
-            "invalid redis response",
-        )),
-    }
-}
-
-fn hashmap_from_redis<T: Into<String>>(
-    redis_actor: Addr<Unsync, RedisActor>,
-    node_id: T,
-) -> impl Future<Item = HashMap<String, String>, Error = actix_web::Error> {
-    redis_actor
-        .send(Command(resp_array!["HGETALL", node_id.into().clone()]))
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Error sending HGETALL command."))
-        .and_then(move |result| {
-            let resp_arr: Result<HashMap<String, String>, _> = match result {
-                Ok(RespValue::Array(keys_values)) => keys_values
-                    .chunks(2)
-                    .map(|two_elems| match two_elems {
-                        &[ref key, ref val] => {
-                            Ok((extract_string(key.clone())?, extract_string(val.clone())?))
-                        }
-                        _ => Err(actix_web::error::ErrorInternalServerError(
-                            "invalid redis response",
-                        )),
-                    })
-                    .collect(),
-                _ => Err(actix_web::error::ErrorInternalServerError(
-                    "invalid redis response",
-                )),
-            };
-            resp_arr
-        })
-}
-
-impl Handler<()> for ListNodesHandler {
-    type Result = Box<Future<Item = HttpResponse, Error = actix_web::Error>>;
-
-    fn handle(&mut self, _r: HttpRequest<()>) -> <Self as Handler<()>>::Result {
-        let redis_actor = self.redis_actor.clone();
-        let list_type = self.list_type;
-        Box::new(self.list_keys().and_then(move |nodes| {
-            future::join_all(
-                nodes
-                    .into_iter()
-                    .map(|node_id| {
-                        hashmap_from_redis(redis_actor.clone(), format!("nodeinfo.{}", node_id))
-                            .map(move |mut hashmap| {
-                                hashmap.insert("node_id".to_string(), node_id.clone());
-                                hashmap
-                            })
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .and_then(move |results| match list_type {
-                ListType::CSV => {
-                    let mut csv_writer = csv::Writer::from_writer(vec![]);
-                    match csv_writer.write_record(CSV_FIELDS) {
-                        Err(e) => {
-                            return future::err(actix_web::error::ErrorInternalServerError(
-                                e.to_string(),
-                            ))
-                        }
-                        _ => (),
-                    }
-                    for mut row in results {
-                        let csv_record = CSV_FIELDS.into_iter().map(|column_name| {
-                            match row.remove(map_csv_field(*column_name)) {
-                                Some(value) => {
-                                    if *column_name == "ip" {
-                                        obfuscate_ip(value)
-                                    } else {
-                                        value
-                                    }
-                                }
-                                None => "".to_string(),
-                            }
-                        });
-                        match csv_writer.write_record(csv_record) {
-                            Err(e) => {
-                                return future::err(actix_web::error::ErrorInternalServerError(
-                                    e.to_string(),
-                                ))
-                            }
-                            _ => (),
-                        }
-                    }
-                    let body_text = match csv_writer.into_inner() {
-                        Ok(buf) => match String::from_utf8(buf) {
-                            Ok(str) => str,
-                            Err(e) => {
-                                return future::err(actix_web::error::ErrorInternalServerError(
-                                    e.to_string(),
-                                ))
-                            }
-                        },
-                        Err(e) => {
-                            return future::err(actix_web::error::ErrorInternalServerError(
-                                e.to_string(),
-                            ))
-                        }
-                    };
-                    future::ok(HttpResponse::build(StatusCode::OK).body(body_text))
-                }
-                ListType::JSON => match serde_json::to_string(&results) {
-                    Ok(str) => future::ok(HttpResponse::build(StatusCode::OK).body(str)),
-                    Err(e) => {
-                        return future::err(actix_web::error::ErrorInternalServerError(
-                            e.to_string(),
-                        ))
-                    }
-                },
-            })
-        }))
-    }
-}
