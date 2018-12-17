@@ -74,7 +74,7 @@ impl<'a> RedisHandle<'a> {
     ) -> impl Stream<Item = Vec<String>, Error = actix_redis::RespError> {
         let actor = self.actor.clone();
 
-        scan(move |cursor| {
+        scan_with_query(move |cursor| {
             actor
                 .send(Command(resp_array![
                     "SCAN",
@@ -94,7 +94,7 @@ impl<'a> RedisHandle<'a> {
         count: usize,
     ) -> impl Stream<Item = Vec<String>, Error = RespError> {
         let actor = self.actor.clone();
-        scan(move |cursor| {
+        scan_with_query(move |cursor| {
             actor
                 .send(Command(resp_array![
                     "SSCAN",
@@ -114,7 +114,7 @@ impl<'a> RedisHandle<'a> {
         })
     }
 
-    pub fn get_hashmap(
+    pub fn get_hash(
         &self,
         key: String,
     ) -> impl Future<Item = HashMap<String, String>, Error = RespError> {
@@ -137,12 +137,17 @@ impl<'a> RedisHandle<'a> {
     }
 }
 
-fn scan<QueryBuilder, QueryResult>(
+struct ScanStream<Fetch, FetchFut> {
+    fut: Option<FetchFut>,
+    poll_fn: Fetch,
+}
+
+fn scan_with_query<QueryBuilder, QueryBuilderResult>(
     builder: QueryBuilder,
 ) -> impl Stream<Item = Vec<String>, Error = RespError>
 where
-    QueryBuilder: Fn(u64) -> QueryResult,
-    QueryResult: Future<Item = Result<RespValue, actix_redis::Error>, Error = MailboxError>,
+    QueryBuilder: Fn(u64) -> QueryBuilderResult,
+    QueryBuilderResult: Future<Item = Result<RespValue, actix_redis::Error>, Error = MailboxError>,
 {
     ScanStream::new(move |cursor| {
         builder(cursor)
@@ -168,29 +173,10 @@ where
     })
 }
 
-struct ScanStream<FutFn, Fut> {
-    fut_fn: FutFn,
-    fut: Option<Fut>,
-}
-
-impl<FutFn, Fut> ScanStream<FutFn, Fut>
+impl<Fetch, FetchFut> Stream for ScanStream<Fetch, FetchFut>
 where
-    FutFn: Fn(u64) -> Fut,
-    Fut: Future<Item = (u64, Vec<String>), Error = RespError>,
-{
-    fn new(poll_fn: FutFn) -> Self {
-        let fut = Some(poll_fn(0));
-        ScanStream {
-            fut,
-            fut_fn: poll_fn,
-        }
-    }
-}
-
-impl<FutFn, Fut> Stream for ScanStream<FutFn, Fut>
-where
-    FutFn: Fn(u64) -> Fut,
-    Fut: Future<Item = (u64, Vec<String>), Error = RespError>,
+    Fetch: Fn(u64) -> FetchFut,
+    FetchFut: Future<Item = (u64, Vec<String>), Error = RespError>,
 {
     type Item = Vec<String>;
     type Error = RespError;
@@ -200,30 +186,42 @@ where
             match fut.poll() {
                 Ok(Async::NotReady) => {
                     self.fut = Some(fut);
-                    Ok(Async::NotReady)
+                    return Ok(Async::NotReady);
                 }
                 Ok(Async::Ready((cursor, data))) => {
                     if cursor != 0 {
-                        self.fut = Some((self.fut_fn)(cursor));
+                        self.fut = Some((self.poll_fn)(cursor));
                     }
-                    Ok(Async::Ready(Some(data)))
+                    return Ok(Async::Ready(Some(data)));
                 }
-                Err(e) => Err(e),
+                Err(e) => return Err(e),
             }
         } else {
-            Ok(Async::Ready(None))
+            return Ok(Async::Ready(None));
         }
     }
 }
 
+impl<Fetch, FetchFut> ScanStream<Fetch, FetchFut>
+where
+    Fetch: Fn(u64) -> FetchFut,
+    FetchFut: Future<Item = (u64, Vec<String>), Error = RespError>,
+{
+    fn new(poll_fn: Fetch) -> Self {
+        let fut = Some(poll_fn(0));
+        ScanStream { fut, poll_fn }
+    }
+}
+
 #[cfg(test)]
-mod test {
+#[cfg(feature = "local-test")]
+mod tests {
     use super::*;
     use actix::fut;
     use futures::prelude::*;
 
-    //#[test]
-    fn test() {
+    #[test]
+    fn test_scan_set() {
         let mut sys = System::new("test");
 
         let actor = RedisActor::start("127.0.0.1:6379");
@@ -239,7 +237,7 @@ mod test {
                         data.into_iter()
                             .map(move |node_id| {
                                 ref2.as_redis_handle()
-                                    .get_hashmap(format!("nodeinfo.{}", node_id))
+                                    .get_hash(format!("nodeinfo.{}", node_id))
                             })
                             .collect::<Vec<_>>(),
                     )

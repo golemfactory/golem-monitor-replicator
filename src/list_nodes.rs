@@ -14,6 +14,8 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
         let redis_actor = RedisActor::start(redis_address.clone());
         let redis_actor_j = redis_actor.clone();
 
+        let csv_header = bytes::Bytes::from(CSV_FIELDS.join(",") + "\n");
+
         app.resource("/dump", move |r| {
             r.get().with(move |_: HttpRequest<_>| {
                 let redis_iter = redis_actor.clone();
@@ -26,7 +28,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                     .map(move |key_chunk| dump_csv_for_keys(&redis_iter, key_chunk))
                     .buffer_unordered(2);
 
-                let header = bytes::Bytes::from(CSV_FIELDS.join(",") + "\n");
+                let header = csv_header.clone();
                 let cvs_framed_with_header = futures::stream::once(Ok(header)).chain(csv_framed);
 
                 Ok::<_, actix_web::Error>(
@@ -59,7 +61,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                                 .map(move |node_id| {
                                     redis
                                         .as_redis_handle()
-                                        .get_hashmap(format!("nodeinfo.{}", node_id))
+                                        .get_hash(format!("nodeinfo.{}", node_id))
                                         .map_err(|e| {
                                             actix_web::error::ErrorInternalServerError(
                                                 e.to_string(),
@@ -91,7 +93,6 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                     HttpResponse::Ok()
                         .content_type("application/json")
                         .header("cache-control", "public, max-age=30")
-                        .write_buffer_capacity(1024 * 1024)
                         .streaming(json),
                 )
             })
@@ -108,7 +109,7 @@ fn dump_csv_for_keys(
             .map(|key| {
                 redis
                     .as_redis_handle()
-                    .get_hashmap(key)
+                    .get_hash(key)
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
             })
             .collect::<Vec<_>>(),
@@ -141,6 +142,7 @@ fn dump_csv_for_keys(
 /* from output column name to redis field name  */
 fn map_csv_field(s: &str) -> &str {
     match s {
+        "node_id" => "cliid",
         "last_seen" => "timestamp",
         "performance_general" => "estimated_performance",
         "performance_lux" => "estimated_lux_performance",

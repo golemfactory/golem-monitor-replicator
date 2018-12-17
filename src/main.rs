@@ -52,20 +52,29 @@ extern crate nom;
 mod pingme;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct MonitorSettings {
     address: ::std::net::SocketAddr,
-    redis_address: String,
+    redis: String,
+    redirect: String,
 }
 
 impl MonitorSettings {
     fn load() -> Result<Self, ConfigError> {
         let mut config = Config::new();
 
+        let mut env = Environment::with_prefix("golem_monitor");
+        //env.separator("__".into());
+
+        use config::Source;
+        println!("env={:?}", env.collect().unwrap());
+
         config
             .set_default("address", "0.0.0.0:8081")?
-            .set_default("redis_address", "127.0.0.1:6379")?
+            .set_default("redis", "127.0.0.1:6379")?
+            .set_default("redirect", "/show")?
             .merge(File::with_name("golem-monitor").required(false))?
-            .merge(Environment::with_prefix("golem_monitor"))?;
+            .merge(env)?;
 
         config.try_into()
     }
@@ -82,10 +91,9 @@ fn main() {
 
     let sys = actix::System::new("golem-monitor");
 
-    let MonitorSettings {
-        address,
-        redis_address,
-    } = MonitorSettings::load().unwrap();
+    let settings = MonitorSettings::load().unwrap();
+
+    let address = settings.address.clone();
 
     info!("Starting server on {}", &address);
 
@@ -93,8 +101,11 @@ fn main() {
         App::new()
             .middleware(actix_web::middleware::Logger::default())
             .configure(route_pingme)
-            .configure(route_list_nodes(redis_address.clone()))
-            .configure(route_stats_update(redis_address.clone()))
+            .configure(route_list_nodes(settings.redis.clone()))
+            .configure(route_stats_update(
+                settings.redis.clone(),
+                settings.redirect.clone(),
+            ))
     })
     .bind(address)
     .unwrap()
@@ -123,20 +134,21 @@ fn route_pingme(app: App) -> App {
 }
 
 #[cfg(feature = "stats_update")]
-fn route_stats_update(redis_address: String) -> impl Fn(App) -> App {
+fn route_stats_update(redis_address: String, redirect_to: String) -> impl Fn(App) -> App {
     info!("mounting stats update");
     use actix_redis::RedisActor;
 
     move |app: App| -> App {
+        let redirect_to = redirect_to.clone();
         let redis_actor = RedisActor::start(redis_address.clone());
 
         let update_handler_root = stats_update::UpdateHandler::new(redis_actor.clone());
         let update_handler_update = stats_update::UpdateHandler::new(redis_actor);
 
         app.resource("/", move |r| {
-            r.method(http::Method::GET).h(|_r| {
+            r.method(http::Method::GET).h(move |_r| {
                 HttpResponse::MovedPermanenty()
-                    .header("Location", "/show")
+                    .header("Location", redirect_to.clone())
                     .finish()
             });
             r.method(http::Method::POST).h(update_handler_root)

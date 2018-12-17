@@ -30,6 +30,7 @@ pingme = []
 stats_update = ['redis']
 list_nodes = ['redis']
 redis=[]
+local-test=[]
 
 [profile.release]
 lto = true
