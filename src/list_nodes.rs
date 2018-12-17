@@ -13,8 +13,7 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
     move |app: App| {
         use actix_redis::RedisActor;
         let redis_actor = RedisActor::start(redis_address.clone());
-        let redis_actorx = redis_actor.clone();
-        let redis_actorxj = redis_actor.clone();
+        let redis_actor_j = redis_actor.clone();
 
         app.resource("/dump", move |r| {
             r.get().with(move |_: HttpRequest<_>| {
@@ -47,9 +46,9 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
         })
         .resource("/v1/nodes", move |r| {
             r.get().with(move |_: HttpRequest<_>| {
-                let redis = redis_actorxj.clone();
+                let redis = redis_actor_j.clone();
 
-                let json = redis_actorxj
+                let json = redis_actor_j
                     .as_redis_handle()
                     .scan_set("active_nodes".into(), 10)
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
@@ -224,5 +223,3 @@ static CSV_FIELDS: &[&str] = &[
     "rs_failed_cnt",
     "rs_failed_total_time",
 ];
-
-

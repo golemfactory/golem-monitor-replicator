@@ -107,7 +107,7 @@ impl<'a> RedisHandle<'a> {
                 .map_err(|e| {
                     match e {
                         MailboxError::Timeout => error!("timeout on scan set"),
-                        MailboxError::Closed => error!("closed")
+                        MailboxError::Closed => error!("closed"),
                     }
                     e
                 })
@@ -151,7 +151,7 @@ where
 {
     ScanStream::new(move |cursor| {
         builder(cursor)
-            .map_err(|e| RespError::Internal("mailbox".into()))
+            .map_err(|_e| RespError::Internal("mailbox".into()))
             .and_then(|result| match result {
                 Ok(val) => {
                     let (cursor_val, data_val) = val.into_pair()?;
