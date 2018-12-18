@@ -67,6 +67,12 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                                                 e.to_string(),
                                             )
                                         })
+                                        .map(|mut node| {
+                                            if let Some(ip_value) = node.get_mut("ip".into()) {
+                                                *ip_value = obfuscate_ip(ip_value.to_string())
+                                            }
+                                            node
+                                        })
                                 })
                                 .into_iter(),
                         )
