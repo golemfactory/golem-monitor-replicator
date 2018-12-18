@@ -63,8 +63,8 @@ impl MonitorSettings {
     fn load() -> Result<Self, ConfigError> {
         let mut config = Config::new();
 
-        let mut env = Environment::with_prefix("golem_monitor");
-        //env.separator("__".into());
+        let env = Environment::with_prefix("golem_monitor");
+        // env.separator("__".into());
 
         use config::Source;
         println!("env={:?}", env.collect().unwrap());
@@ -92,7 +92,6 @@ fn main() {
     let sys = actix::System::new("golem-monitor");
 
     let settings = MonitorSettings::load().unwrap();
-
     let address = settings.address.clone();
 
     info!("Starting server on {}", &address);
