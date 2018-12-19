@@ -18,7 +18,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use updater::{UpdateRedis, Updater, UpdateMap, UpdateVal};
+use updater::{UpdateMap, UpdateRedis, UpdateVal, Updater};
 
 #[derive(Deserialize, Debug)]
 struct Envelope<T> {
@@ -140,7 +140,7 @@ struct Metadata {
     #[serde(deserialize_with = "string_or_struct")]
     #[serde(default)]
     os_info: OSInfo,
-    os: Option<String>,  // Backwards-compatibility
+    os: Option<String>, // Backwards-compatibility
 
     #[serde(flatten)]
     extra: HashMap<String, Value>,
@@ -366,7 +366,6 @@ struct NVGPUOutput {
     nvgpu_is_supported: Option<bool>,
 }
 
-
 fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashMap<String, Value> {
     protocol_versions
         .iter()
@@ -381,7 +380,6 @@ fn now_in_millis() -> u64 {
 
     secs * 1000 + millis
 }
-
 
 // The signature of this function should be
 // fn to_node_info(cliid: String, body: GolemRequestBody, ip: Option<IpAddr>) -> Option<NodeInfoOutput>
@@ -411,7 +409,9 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             requestor_stats: RequestorStatsOutput::default(),
             nvgpu: match nvgpu {
                 None => NVGPUOutput::default(),
-                Some(nvgpu) => NVGPUOutput{ nvgpu_is_supported: Some(nvgpu.is_supported) },
+                Some(nvgpu) => NVGPUOutput {
+                    nvgpu_is_supported: Some(nvgpu.is_supported),
+                },
             },
             metadata: metadata
                 .map(|m| MetadataOutput {
@@ -435,7 +435,7 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     os_windows_edition: m.os_info.windows_edition,
                     os_linux_distribution: match m.os_info.linux_distribution {
                         Some(x) => Some(x.join(" ")),
-                        None => None
+                        None => None,
                     },
                 })
                 .unwrap_or(MetadataOutput::default()),
@@ -544,7 +544,8 @@ impl From<serde_json::Error> for ConvertError {
 
 fn to_hash_map<T: serde::Serialize>(input: &T) -> Result<HashMap<String, String>, ConvertError> {
     if let serde_json::Value::Object(map) = serde_json::to_value(input)? {
-        Ok(map.iter()
+        Ok(map
+            .iter()
             .filter_map(|(k, v)| match v {
                 serde_json::Value::String(s) => Some((k.clone(), s.clone())),
                 serde_json::Value::Number(n) => Some((k.clone(), n.to_string())),
@@ -594,16 +595,19 @@ fn push_p2pstats(
 
 fn push_msg_to_redis(
     updater: &Addr<Unsync, Updater>,
-    update_msg: UpdateRedis
+    update_msg: UpdateRedis,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
-    Box::new(updater.send(update_msg)
+    Box::new(
+        updater
+            .send(update_msg)
             .map_err(|_e| actix_web::error::ErrorInternalServerError("send error"))
             .and_then(|r| match r {
-              Ok(_v) => future::ok(HttpResponse::Ok().into()),
-              Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
-                  "save: {}",
-                  e
-              )))})
+                Ok(_v) => future::ok(HttpResponse::Ok().into()),
+                Err(e) => future::err(actix_web::error::ErrorInternalServerError(format!(
+                    "save: {}",
+                    e
+                ))),
+            }),
     )
 }
 
@@ -623,25 +627,27 @@ impl Handler<()> for UpdateHandler {
         req.json()
             .from_err()
             .and_then(move |envelope: Envelope<GolemRequest>| {
-
-                if let GolemRequest { cliid, body: GolemRequestBody::P2PSnapshot { extra }, .. } = envelope.data {
+                if let GolemRequest {
+                    cliid,
+                    body: GolemRequestBody::P2PSnapshot { extra },
+                    ..
+                } = envelope.data
+                {
                     match serde_json::to_string(&extra) {
                         Ok(extra) => push_p2pstats(cliid, &updater, extra),
-                        Err(_e) => Box::new(future::ok(HttpResponse::Ok().into())) // This branch will never be executed
+                        Err(_e) => Box::new(future::ok(HttpResponse::Ok().into())), // This branch will never be executed
                     }
-                }
-                else {
+                } else {
                     match to_node_info(envelope, client_ip) {
                         Some(node_info) => push_node_info(&updater, &node_info),
-                        None => Box::new(future::ok(HttpResponse::Ok().into()))
+                        None => Box::new(future::ok(HttpResponse::Ok().into())),
                     }
                 }
-
-
-            }).or_else(|e : actix_web::Error| {
+            })
+            .or_else(|e: actix_web::Error| {
                 let mut resp = e.as_response_error().error_response();
                 warn!("processing request, error={:?}", &e);
-                resp.set_body(format!("{}",e));
+                resp.set_body(format!("{}", e));
                 future::ok(resp)
             })
             .responder()

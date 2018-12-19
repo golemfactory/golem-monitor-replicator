@@ -27,13 +27,11 @@ pub struct UpdateVal {
     pub value: String,
 }
 
-
 #[derive(Debug)]
 pub enum UpdateRedis {
     UpdateRedisMap(UpdateMap),
-    UpdateRedisVal(UpdateVal)
+    UpdateRedisVal(UpdateVal),
 }
-
 
 impl Message for UpdateRedis {
     type Result = Result<(), Error>;
@@ -46,7 +44,6 @@ impl Message for UpdateRedis {
 //impl Message for UpdateVal {
 //    type Result = Result<(), Error>;
 //}
-
 
 impl Actor for Updater {
     type Context = Context<Self>;
@@ -85,7 +82,6 @@ impl From<MailboxError> for Error {
     }
 }
 
-
 fn to_hmset_command(msg: UpdateMap) -> Command {
     debug!("preparing command for {:?}", msg);
 
@@ -115,7 +111,6 @@ impl Handler<UpdateRedis> for Updater {
         msg: UpdateRedis,
         _: &mut Self::Context,
     ) -> <Self as Handler<UpdateRedis>>::Result {
-
         let redis_actor = &self.redis_actor;
 
         if let UpdateRedis::UpdateRedisMap(ref msg) = msg {
@@ -125,16 +120,14 @@ impl Handler<UpdateRedis> for Updater {
         let f = redis_actor
             .send(match msg {
                 UpdateRedis::UpdateRedisMap(u) => to_hmset_command(u),
-                UpdateRedis::UpdateRedisVal(u) => to_set_command(u)
-            }).into_actor(self)
+                UpdateRedis::UpdateRedisVal(u) => to_set_command(u),
+            })
+            .into_actor(self)
             .map_err(|e, _, _| {
                 error!("update key error {:?}", &e);
                 e.into()
             })
             .map(|r, _, _| debug!("resp={:?}", r));
-
-
-
 
         ActorResponse::async(f)
     }
