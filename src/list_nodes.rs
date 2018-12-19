@@ -85,13 +85,15 @@ pub fn route_list_nodes(
                         if let Some(timeout) = remove_inactive_after {
                             future::Either::B(node_fut.and_then(move |(node_id, node)| {
                                 if let Some(ts) = node.get("timestamp").and_then(|s| s.parse().ok()) {
-                                    let ts = UNIX_EPOCH +Duration::from_millis(ts)
-                                        + timeout;
+                                    let ts = UNIX_EPOCH + Duration::from_millis(ts) + timeout;
                                     if ts < now {
                                         debug!("removing: ts={:?} now={:?} tmo={:?}", ts, now, timeout);
-                                        future::Either::B(redis_rem.as_redis_handle().remove_from_set("active_nodes".into(), node_id)
-                                            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
-                                            .and_then(|_| Ok(node)))
+                                        future::Either::B(
+                                            redis_rem
+                                                .as_redis_handle()
+                                                .remove_from_set("active_nodes".into(), node_id)
+                                                .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
+                                                .and_then(|_| Ok(node)))
                                     }
                                     else {
                                         future::Either::A(future::ok(node))
@@ -197,7 +199,7 @@ fn map_csv_field(s: &str) -> &str {
     }
 }
 
-fn obfuscate_ip<S : AsRef<str>>(s: S) -> String {
+fn obfuscate_ip<S: AsRef<str>>(s: S) -> String {
     if let Some(it) = s.as_ref().split(".").next() {
         return format!("{}.x.x.x", it);
     }
