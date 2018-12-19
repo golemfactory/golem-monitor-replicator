@@ -92,7 +92,6 @@ fn main() {
     let sys = actix::System::new("golem-monitor");
 
     let settings = MonitorSettings::load().unwrap();
-
     let address = settings.address.clone();
 
     info!("Starting server on {}", &address);

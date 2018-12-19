@@ -69,7 +69,12 @@ pub fn route_list_nodes(
                                         .as_redis_handle()
                                         .get_hash(format!("nodeinfo.{}", node_id))
                                         .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
-                                        .and_then(|node| Ok((node_id, node)))
+                                        .and_then(|mut node| {
+                                            if let Some(ip_value) = node.get_mut("ip") {
+                                                *ip_value = obfuscate_ip(ip_value.to_string())
+                                            }
+                                            Ok((node_id, node))
+                                        })
                                 })
                                 .into_iter()
                         )
@@ -192,11 +197,11 @@ fn map_csv_field(s: &str) -> &str {
     }
 }
 
-fn obfuscate_ip(s: String) -> String {
-    if let Some(it) = s.split(".").next() {
+fn obfuscate_ip<S : AsRef<str>>(s: S) -> String {
+    if let Some(it) = s.as_ref().split(".").next() {
         return format!("{}.x.x.x", it);
     }
-    s
+    "x.x.x.x".to_string()
 }
 
 static CSV_FIELDS: &[&str] = &[
