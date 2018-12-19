@@ -21,6 +21,7 @@ extern crate env_logger;
 use actix_web::{http, server, App, HttpMessage, HttpRequest, HttpResponse};
 use config::{Config, ConfigError, Environment, File};
 use std::net::IpAddr;
+use std::time;
 
 #[cfg(feature = "redis")]
 extern crate actix_redis;
@@ -51,28 +52,27 @@ extern crate nom;
 #[cfg(feature = "pingme")]
 mod pingme;
 
+mod stream_utils;
+
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 struct MonitorSettings {
     address: ::std::net::SocketAddr,
     redis: String,
     redirect: String,
+    inactive: Option<u64>,
 }
 
 impl MonitorSettings {
     fn load() -> Result<Self, ConfigError> {
         let mut config = Config::new();
 
-        let mut env = Environment::with_prefix("golem_monitor");
-        //env.separator("__".into());
-
-        use config::Source;
-        println!("env={:?}", env.collect().unwrap());
+        let env = Environment::with_prefix("golem_monitor");
 
         config
             .set_default("address", "0.0.0.0:8081")?
             .set_default("redis", "127.0.0.1:6379")?
             .set_default("redirect", "/show")?
+            .set_default("inactive", Some(120))?
             .merge(File::with_name("golem-monitor").required(false))?
             .merge(env)?;
 
@@ -101,7 +101,10 @@ fn main() {
         App::new()
             .middleware(actix_web::middleware::Logger::default())
             .configure(route_pingme)
-            .configure(route_list_nodes(settings.redis.clone()))
+            .configure(route_list_nodes(
+                settings.redis.clone(),
+                settings.inactive.map(time::Duration::from_secs),
+            ))
             .configure(route_stats_update(
                 settings.redis.clone(),
                 settings.redirect.clone(),
@@ -118,7 +121,7 @@ fn main() {
 pub use list_nodes::route_list_nodes;
 
 #[cfg(not(feature = "list_nodes"))]
-fn route_list_nodes(_: String) -> impl Fn(App) -> App {
+fn route_list_nodes(_: String, _: Option<time::Duration>) -> impl Fn(App) -> App {
     |app| app
 }
 

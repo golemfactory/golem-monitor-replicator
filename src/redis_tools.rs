@@ -12,6 +12,8 @@ pub trait RespValueExt: Sized {
     fn into_pair(self) -> Result<(Self, Self), Self::Error>;
 
     fn into_vec(self) -> Result<Vec<Self>, Self::Error>;
+
+    fn into_i64(self) -> Result<i64, Self::Error>;
 }
 
 impl RespValueExt for RespValue {
@@ -48,6 +50,13 @@ impl RespValueExt for RespValue {
         match self {
             RespValue::Array(v) => Ok(v),
             _ => Err(RespError::Internal("array expected".into())),
+        }
+    }
+
+    fn into_i64(self) -> Result<i64, Self::Error> {
+        match self {
+            RespValue::Integer(v) => Ok(v),
+            _ => Err(RespError::Internal("integer expected".into())),
         }
     }
 }
@@ -133,6 +142,21 @@ impl<'a> RedisHandle<'a> {
                         _ => Err(RespError::Internal("pair expected".into())),
                     })
                     .collect::<Result<HashMap<String, String>, _>>()
+            })
+    }
+
+    pub fn remove_from_set(
+        &self,
+        set_key: String,
+        key: String,
+    ) -> impl Future<Item = i64, Error = RespError> {
+        self.actor
+            .send(Command(resp_array!["SREM", set_key, key]))
+            .timeout(Duration::from_secs(2))
+            .map_err(|_e| RespError::Internal("mailbox".into()))
+            .and_then(|r| {
+                r.map_err(|e| RespError::Internal(format!("{}", e)))?
+                    .into_i64()
             })
     }
 }

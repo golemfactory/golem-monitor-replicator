@@ -6,9 +6,12 @@ use futures::future;
 use futures::prelude::*;
 use redis_tools::*;
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
+pub fn route_list_nodes(
+    redis_address: String,
+    remove_inactive_after: Option<Duration>,
+) -> impl Fn(App) -> App {
     move |app: App| {
         use actix_redis::RedisActor;
         let redis_actor = RedisActor::start(redis_address.clone());
@@ -48,6 +51,9 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
         .resource("/v1/nodes", move |r| {
             r.get().with(move |_: HttpRequest<_>| {
                 let redis = redis_actor_j.clone();
+                let redis_rem = redis_actor_j.clone();
+                let remove_inactive_after = remove_inactive_after.clone();
+                let now = SystemTime::now();
 
                 let json = redis_actor_j
                     .as_redis_handle()
@@ -62,19 +68,44 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                                     redis
                                         .as_redis_handle()
                                         .get_hash(format!("nodeinfo.{}", node_id))
-                                        .map_err(|e| {
-                                            actix_web::error::ErrorInternalServerError(
-                                                e.to_string(),
-                                            )
-                                        })
+                                        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
+                                        .and_then(|node| Ok((node_id, node)))
                                 })
-                                .into_iter(),
+                                .into_iter()
                         )
                     })
                     .flatten()
+                    .map(move |node_fut| {
+                        let redis_rem = redis_rem.clone();
+                        if let Some(timeout) = remove_inactive_after {
+                            future::Either::B(node_fut.and_then(move |(node_id, node)| {
+                                if let Some(ts) = node.get("timestamp").and_then(|s| s.parse().ok()) {
+                                    let ts = UNIX_EPOCH +Duration::from_millis(ts)
+                                        + timeout;
+                                    if ts < now {
+                                        debug!("removing: ts={:?} now={:?} tmo={:?}", ts, now, timeout);
+                                        future::Either::B(redis_rem.as_redis_handle().remove_from_set("active_nodes".into(), node_id)
+                                            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))
+                                            .and_then(|_| Ok(node)))
+                                    }
+                                    else {
+                                        future::Either::A(future::ok(node))
+                                    }
+                                }
+                                else {
+                                    future::Either::A(future::ok(node))
+                                }
+                            }))
+                        }
+                        else {
+                            future::Either::A(node_fut.and_then(|(_, node)| Ok(node)))
+                        }
+                    })
                     .buffered(50)
-                    .zip(futures::stream::iter_ok(0..))
-                    .and_then(|(node, idx)| {
+/*                    .zip(futures::stream::iter_ok(0..))
+                    .and_then(move |(node, idx) : (HashMap<String, String>, u64)| {
+
+
                         if idx == 0 {
                             Ok(bytes::Bytes::from(format!(
                                 "[{}",
@@ -87,7 +118,9 @@ pub fn route_list_nodes(redis_address: String) -> impl Fn(App) -> App {
                             )))
                         }
                     })
-                    .chain(futures::stream::once(Ok("]".into())));
+                    .chain(futures::stream::once(Ok("]".into())))*/;
+                let json = ::stream_utils::stream_json_array(10240, 12288,
+                                                             |e| actix_web::error::ErrorInternalServerError(e.to_string()), json);
 
                 Ok::<_, actix_web::Error>(
                     HttpResponse::Ok()
