@@ -1,8 +1,8 @@
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Bytes};
 use futures::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use serde_json;
-use std::io::{Cursor, Write};
+use std::io::{Write};
 use std::mem;
 
 #[derive(Clone, Copy)]
