@@ -1,14 +1,45 @@
-# golem-monitor-replicator
+# Golem Monitor Backend
 
-Golem Monitor Replicator accepts json messages from golem nodes, parses them and puts data into redis.
+A backend for https://stats.golem.network serving handful of REST endpoints.
+Uses [redis](https://redis.io/) as a data store.
 
-By default it:
-* listens on `0.0.0.0:8081` with `/` and `/update` routes.
+## features
+
+Server has three features switchable at compile time. Two of them are enabled by default. 
+
+| | stats_update | list_nodes | pingme |
+| - | - | - | - |
+| is default | &check; | &check; | &#10007; |
+| endpoints | `/`, `/update` | `/dump`, `/v1/nodes`  | `/ping-me` | 
+
+## endpoints
+
+Depending on selected features server supports following endpoints:
+
+| endpoint | http method | description |
+| - | :-: | - |
+| `/` | GET | redirects to `/show` (configurable) |
+| `/` and `/update`| POST | accept `{json}` messages from [Golem](https://github.com/golemfactory/golem) nodes. Number of types are supported. Most notable are: node info, usage stats and p2p network info. Writes data into redis |
+| `/dump` | GET | dumps whole redis store into `csv` format (compatible with [old monitor frontend](https://github.com/golemfactory/golem-monitor/blob/7cb724957247584147b50501361a8acd7f7220d7/models/dumper.js#L33))|
+| `/v1/nodes` | GET | responds with `{json}` containing info about active nodes. Golem node is considered active when it has triggered  `/update` within last 120 s (configurable). Used by [new monitor frontend](https://github.com/golemfactory/golem-monitor-frontend)
+| `/ping-me` | POST | accept `{json}` request to scan up to `5` ports at origin IP (read from `x-forwarded-for` header; it is by design to be deployed behind some load balancer e.g. nginx ) |
+
+## configuration
+
+Server can be configured through environment variables. Here are their default values
+```
+GOLEM_MONITOR_ADDRESS=0.0.0.0:8081
+GOLEM_MONITOR_REDIS=127.0.0.1:6379
+GOLEM_MONITOR_REDIRECT=/show
+GOLEM_MONITOR_REDIRECT=120
+
+# additionally, this rust built-in env var is preset to
+RUST_LOG=actix_web=info,actix_redis=info,golem_monitor_rust=info
+```
+
+which means by default the backend server:
+* listens on `0.0.0.0:8081`
 * writes to a local redis instance at `127.0.0.1:6379`
-
-It can also support `/ping-me` route but it is disabled by default (feature `pingme`). 
-
-It is back compatible with [golem-monitor](https://github.com/golemfactory/golem-monitor).
 
 ## dev
 To run in development mode use e.g.
@@ -20,7 +51,7 @@ cargo run
 
 ## contributing
 
-### Commit msg standard
+### commit msg standard
 We are generating change-log's via [git journal](https://github.com/saschagrunert/git-journal).
 This requires each commit to have category. For category list see [.gitjournal.toml](.gitjournal.toml).
 
@@ -64,4 +95,16 @@ curl \
         }
     }' \
     http://localhost:8081
-```    
+```  
+
+### ping-me test
+1. start local redis
+1. run `cargo build --features=pingme`
+1. run
+```
+curl \
+    --header "Content-Type: application/json" \
+    --request POST \
+    --data '{"timestamp":1, "ports":[40102, 40103, 3282]}' \
+    http://localhost:8081/ping-me
+```
