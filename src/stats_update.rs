@@ -121,6 +121,38 @@ enum GolemRequestBody {
         #[serde(default)]
         failed_total_time: f64,
     },
+    RequestorAggregateStats {
+        #[serde(default)]
+        requestor_payment_cnt: u64,
+        #[serde(default)]
+        requestor_payment_delay_avg: f64,
+        #[serde(default)]
+        requestor_payment_delay_sum: f64,
+        #[serde(default)]
+        requestor_subtask_timeout_mag: u64,
+        #[serde(default)]
+        requestor_subtask_price_mag: u64,
+        #[serde(default)]
+        requestor_velocity_timeout: u64,
+        #[serde(default)]
+        requestor_velocity_comp_time: u64,
+    },
+    ProviderStats {
+        #[serde(default)]
+        provider_wtct_cnt: u64,
+        #[serde(default)]
+        provider_ttc_cnt: u64,
+        #[serde(default)]
+        provider_wtct_to_ttc_delay_sum: u64,
+        #[serde(default)]
+        provider_wtct_to_ttc_cnt: u64,
+        #[serde(default)]
+        provider_income_assigned_sum: u64,
+        #[serde(default)]
+        provider_income_completed_sum: u64,
+        #[serde(default)]
+        provider_income_paid_sum: u64,
+    },
     TaskComputer {
         #[serde(flatten)]
         extra: HashMap<String, Value>,
@@ -265,6 +297,10 @@ struct NodeInfoOutput {
     #[serde(flatten)]
     nvgpu: NVGPUOutput,
     #[serde(flatten)]
+    requestor_aggregate_stats: RequestorAggregateStatsOutput,
+    #[serde(flatten)]
+    provider_stats: ProviderStatsOutput,
+    #[serde(flatten)]
     extra: HashMap<String, Value>,
 }
 
@@ -366,6 +402,42 @@ struct NVGPUOutput {
     nvgpu_is_supported: Option<bool>,
 }
 
+#[derive(Serialize, Debug, Default)]
+struct RequestorAggregateStatsOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_payment_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_payment_delay_avg: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_payment_delay_sum: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_subtask_timeout_mag: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_subtask_price_mag: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_velocity_timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requestor_velocity_comp_time: Option<u64>,
+}
+
+#[derive(Serialize, Debug, Default)]
+struct ProviderStatsOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_wtct_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_ttc_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_wtct_to_ttc_delay_sum: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_wtct_to_ttc_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_income_assigned_sum: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_income_completed_sum: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_income_paid_sum: Option<u64>,
+}
+
 fn protocol_versions_to_map(protocol_versions: &HashMap<String, Value>) -> HashMap<String, Value> {
     protocol_versions
         .iter()
@@ -413,6 +485,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                     nvgpu_is_supported: Some(nvgpu.is_supported),
                 },
             },
+            requestor_aggregate_stats: RequestorAggregateStatsOutput::default(),
+            provider_stats: ProviderStatsOutput::default(),
             metadata: metadata
                 .map(|m| MetadataOutput {
                     net: m.net,
@@ -483,6 +557,66 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 rs_finished_with_failures_total_time: Some(finished_with_failures_total_time),
                 rs_work_offers_cnt: Some(work_offers_cnt),
             },
+            requestor_aggregate_stats: RequestorAggregateStatsOutput::default(),
+            provider_stats: ProviderStatsOutput::default(),
+        }),
+        GolemRequestBody::RequestorAggregateStats {
+            requestor_payment_cnt,
+            requestor_payment_delay_avg,
+            requestor_payment_delay_sum,
+            requestor_subtask_timeout_mag,
+            requestor_subtask_price_mag,
+            requestor_velocity_timeout,
+            requestor_velocity_comp_time,
+        } => Some(NodeInfoOutput {
+            cliid,
+            sessid: Option::None,
+            ip,
+            timestamp,
+            metadata: MetadataOutput::default(),
+            nvgpu: NVGPUOutput::default(),
+            extra: HashMap::new(),
+            stats: StatsOutput::default(),
+            requestor_stats: RequestorStatsOutput::default(),
+            requestor_aggregate_stats: RequestorAggregateStatsOutput {
+                requestor_payment_cnt: Some(requestor_payment_cnt),
+                requestor_payment_delay_avg: Some(requestor_payment_delay_avg),
+                requestor_payment_delay_sum: Some(requestor_payment_delay_sum),
+                requestor_subtask_timeout_mag: Some(requestor_subtask_timeout_mag),
+                requestor_subtask_price_mag: Some(requestor_subtask_price_mag),
+                requestor_velocity_timeout: Some(requestor_velocity_timeout),
+                requestor_velocity_comp_time: Some(requestor_velocity_comp_time),
+            },
+            provider_stats: ProviderStatsOutput::default(),
+        }),
+        GolemRequestBody::ProviderStats {
+            provider_wtct_cnt,
+            provider_ttc_cnt,
+            provider_wtct_to_ttc_delay_sum,
+            provider_wtct_to_ttc_cnt,
+            provider_income_assigned_sum,
+            provider_income_completed_sum,
+            provider_income_paid_sum,
+        } => Some(NodeInfoOutput {
+            cliid,
+            sessid: Option::None,
+            ip,
+            timestamp,
+            metadata: MetadataOutput::default(),
+            nvgpu: NVGPUOutput::default(),
+            extra: HashMap::new(),
+            stats: StatsOutput::default(),
+            requestor_stats: RequestorStatsOutput::default(),
+            requestor_aggregate_stats: RequestorAggregateStatsOutput::default(),
+            provider_stats: ProviderStatsOutput {
+                provider_wtct_cnt: Some(provider_wtct_cnt),
+                provider_ttc_cnt: Some(provider_ttc_cnt),
+                provider_wtct_to_ttc_delay_sum: Some(provider_wtct_to_ttc_delay_sum),
+                provider_wtct_to_ttc_cnt: Some(provider_wtct_to_ttc_cnt),
+                provider_income_assigned_sum: Some(provider_income_assigned_sum),
+                provider_income_completed_sum: Some(provider_income_completed_sum),
+                provider_income_paid_sum: Some(provider_income_paid_sum),
+            },
         }),
         GolemRequestBody::Stats {
             known_tasks,
@@ -500,6 +634,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             metadata: MetadataOutput::default(),
             nvgpu: NVGPUOutput::default(),
             requestor_stats: RequestorStatsOutput::default(),
+            requestor_aggregate_stats: RequestorAggregateStatsOutput::default(),
+            provider_stats: ProviderStatsOutput::default(),
             extra: HashMap::default(),
             stats: StatsOutput {
                 known_tasks: Some(known_tasks),
