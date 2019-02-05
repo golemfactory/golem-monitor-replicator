@@ -147,6 +147,10 @@ enum GolemRequestBody {
         #[serde(default)]
         provider_wtct_to_ttc_cnt: u64,
         #[serde(default)]
+        provider_sra_cnt: u64,
+        #[serde(default)]
+        provider_srr_cnt: u64,
+        #[serde(default)]
         provider_income_assigned_sum: u64,
         #[serde(default)]
         provider_income_completed_sum: u64,
@@ -431,6 +435,10 @@ struct ProviderStatsOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     provider_wtct_to_ttc_cnt: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    provider_sra_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_srr_cnt: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     provider_income_assigned_sum: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     provider_income_completed_sum: Option<u64>,
@@ -594,6 +602,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
             provider_ttc_cnt,
             provider_wtct_to_ttc_delay_sum,
             provider_wtct_to_ttc_cnt,
+            provider_sra_cnt,
+            provider_srr_cnt,
             provider_income_assigned_sum,
             provider_income_completed_sum,
             provider_income_paid_sum,
@@ -613,6 +623,8 @@ fn to_node_info(envelope: Envelope<GolemRequest>, ip: Option<IpAddr>) -> Option<
                 provider_ttc_cnt: Some(provider_ttc_cnt),
                 provider_wtct_to_ttc_delay_sum: Some(provider_wtct_to_ttc_delay_sum),
                 provider_wtct_to_ttc_cnt: Some(provider_wtct_to_ttc_cnt),
+                provider_sra_cnt: Some(provider_sra_cnt),
+                provider_srr_cnt: Some(provider_srr_cnt),
                 provider_income_assigned_sum: Some(provider_income_assigned_sum),
                 provider_income_completed_sum: Some(provider_income_completed_sum),
                 provider_income_paid_sum: Some(provider_income_paid_sum),
