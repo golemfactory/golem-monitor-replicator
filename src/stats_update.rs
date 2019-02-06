@@ -802,7 +802,7 @@ mod tests {
         let r: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
 
         {
-            println!("envelop {:?}", &r);
+            //            println!("envelope {:?}", &r);
             let settings: &Settings = match &r.data.body {
                 &GolemRequestBody::Login { ref metadata, .. } => {
                     &metadata.as_ref().unwrap().settings
@@ -813,10 +813,7 @@ mod tests {
         }
 
         let output = to_node_info(r, None).unwrap();
-        println!(
-            "pretty json {}",
-            serde_json::to_string_pretty(&output).unwrap()
-        );
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
         assert_eq!(output.nvgpu.nvgpu_is_supported, None);
     }
 
@@ -826,56 +823,60 @@ mod tests {
 
         let r: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
         let output = to_node_info(r, None).unwrap();
-        println!(
-            "pretty json {}",
-            serde_json::to_string_pretty(&output).unwrap()
-        );
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
         assert_eq!(output.nvgpu.nvgpu_is_supported.unwrap(), true);
     }
 
     #[test]
     fn parse_login_legacy() {
         let input = include_str!("../test/login-legacy.json");
-        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None).unwrap();
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
+        assert_eq!(output.metadata.estimated_performance, Some(2220.0));
+        assert_eq!(output.metadata.max_memory_size, Some(11534336))
     }
 
     #[test]
     fn parse_login_max_memory_size_f64() {
         let input = include_str!("../test/login-f64.json");
-        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None).unwrap();
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
+        assert_eq!(output.metadata.estimated_performance, Some(2220.0));
+        assert_eq!(output.metadata.max_memory_size, Some(262196972))
     }
 
     #[test]
     fn parse_login_max_resource_size_f64() {
         let input = include_str!("../test/login-resource-float.json");
-        let _result: Envelope<GolemRequest> = serde_json::from_str(input).unwrap();
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None).unwrap();
+        assert_eq!(output.cliid, "2rec");
+        assert_eq!(output.metadata.max_resource_size, Some(360567792));
+        assert_eq!(output.metadata.max_memory_size, Some(12212628));
+        assert_eq!(output.metadata.os, Some("linux".into()));
+        assert_eq!(output.metadata.os_release, Some("4.15.0-36-generic".into()));
     }
 
     #[test]
     fn parse_stats() {
         let input = include_str!("../test/stats.json");
-        let output = to_node_info(serde_json::from_str(input).unwrap(), None);
-        println!(
-            "pretty json {}",
-            serde_json::to_string_pretty(&output.unwrap()).unwrap()
-        );
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None).unwrap();
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
+        assert_eq!(output.stats.tasks_requested, Some(22518));
     }
 
     #[test]
     fn parse_requestor_stats() {
         let input = include_str!("../test/requestor-stats.json");
-        let output = to_node_info(serde_json::from_str(input).unwrap(), None);
-        println!(
-            "pretty json {}",
-            serde_json::to_string_pretty(&output.unwrap()).unwrap()
-        );
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None).unwrap();
+        //        println!("pretty json {}", serde_json::to_string_pretty(&output).unwrap());
+        assert_eq!(output.requestor_stats.rs_finished_ok_total_time, Some(3.14));
     }
 
     #[test]
     fn parse_stats_output() {
         let input = include_str!("../test/stats.json");
         let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
-        println!("output map {:?}", map);
+        //        println!("output map {:?}", map);
         assert_eq!(map.get("tasks_requested").unwrap(), "22518");
     }
 
@@ -883,7 +884,7 @@ mod tests {
     fn parse_requestor_stats_output() {
         let input = include_str!("../test/requestor-stats.json");
         let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
-        println!("output map {:?}", map);
+        //        println!("output map {:?}", map);
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
     }
 }
