@@ -1,0 +1,18 @@
+{
+  "proto_ver": 0,
+  "data": {
+    "type": "ProviderStats",
+    "timestamp": 1524760292.163782,
+    "cliid": "6e845eabffe0e294257da1159f5202216c2e6d352822ebebf23f99731bbd17337830b8a31ed73aa207e19ba3180dc89bc6ecdb5255a2182b64fed5206d1959fa",
+    "sessid": "2e82d720-ba4e-4ea7-8645-d32b446c11a8",
+    "provider_wtct_cnt": 2,
+    "provider_ttc_cnt": 2,
+    "provider_wtct_to_ttc_delay_sum": 0,
+    "provider_wtct_to_ttc_cnt": 0,
+    "provider_sra_cnt": 1,
+    "provider_srr_cnt": 1,
+    "provider_income_assigned_sum": 0,
+    "provider_income_completed_sum": 0,
+    "provider_income_paid_sum": 100
+  }
+}
