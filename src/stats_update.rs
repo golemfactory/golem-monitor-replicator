@@ -884,6 +884,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_provider_stats() {
+        let input = include_str!("../test/provider-stats.json");
+        let output = to_node_info(serde_json::from_str(input).unwrap(), None);
+        println!(
+            "pretty json {}",
+            serde_json::to_string_pretty(&output.unwrap()).unwrap()
+        );
+    }
+
+    #[test]
     fn parse_stats_output() {
         let input = include_str!("../test/stats.json");
         let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
@@ -897,5 +907,17 @@ mod tests {
         let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
         println!("output map {:?}", map);
         assert_eq!(map.get("rs_finished_ok_total_time").unwrap(), "3.14");
+    }
+
+    #[test]
+    fn parse_provider_stats_output() {
+        let input = include_str!("../test/provider-stats.json");
+        let map = to_hash_map(&to_node_info(serde_json::from_str(input).unwrap(), None)).unwrap();
+        println!("output map {:?}", map);
+        assert_eq!(map.get("provider_wtct_cnt").unwrap(), "2");
+        assert_eq!(map.get("provider_ttc_cnt").unwrap(), "2");
+        assert_eq!(map.get("provider_sra_cnt").unwrap(), "1");
+        assert_eq!(map.get("provider_srr_cnt").unwrap(), "1");
+        assert_eq!(map.get("provider_income_paid_sum").unwrap(), "100");
     }
 }
